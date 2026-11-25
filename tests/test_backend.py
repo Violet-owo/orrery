@@ -158,6 +158,29 @@ class T(unittest.TestCase):
         self.assertEqual(out[:6], ["true\tfocus\tspecial:communication", "focus\tspecial:teamspeak",
                                    "window.move\tspecial:teamspeak\ttrue", "focus\tright", "window.move\tright", "focus\tleft"])
 
+    def test_window_names(self):
+        # Telegram: StartupWMClass and the Wayland class differ. Opening the area must not start it again.
+        (self.t / "data/applications/org.telegram.desktop.desktop").write_text("[Desktop Entry]\nType=Application\nName=Telegram\nExec=Telegram -- %U\nStartupWMClass=TelegramDesktop\n")
+        c = self.cfg(); apps = c["areas"][0]["spaces"][1]["apps"]
+        apps.append({"class": "TelegramDesktop", "command": "Telegram"}); self.ctl("apply", c)
+        self.assertIn("(?i)^(TelegramDesktop|org\\092.telegram\\092.desktop)$", (self.t / "caelestia/orrery/settings.lua").read_text())
+        run = lambda cls: self.lua('''
+        local function win(c, ws) return {class=c, address=c, mapped=true, floating=false, workspace={name=ws}, at={x=0,y=0}, size={x=9,y=9}} end
+        WINS = { win("discord","special:communication"), win("com.teamspeak.teamspeak","special:teamspeak"), win("%s","special:teamspeak") }
+        local M = require("orrery.engine")
+        SP={name="special:communication"}; M.toggle("area1"); SP=nil
+        M.toggle("area1")
+        for _,c in ipairs(CALLS) do if c[1]=="dispatch" then local d=c[2] print(d[1], type(d[2])=="table" and d[2].workspace or d[2]) end end
+        ''' % cls).split("\n")[:-1]
+        for cls in ("org.telegram.desktop", "TelegramDesktop", "telegramdesktop"):
+            out = run(cls)
+            self.assertFalse([l for l in out if l.startswith("exec_cmd")], out)
+            self.assertEqual(out[-1], "focus\tspecial:communication")  # exactly where it was left
+        self.assertIn("exec_cmd\tTelegram", run("other"))  # really closed: it starts
+        # a name another app already uses is never taken over
+        apps.append({"class": "org.telegram.desktop", "command": "x"}); self.ctl("apply", c)
+        self.assertIn('"(?i)^TelegramDesktop$"', (self.t / "caelestia/orrery/settings.lua").read_text())
+
     def test_engine_binds(self):
         self.ctl("apply", self.cfg())
         out = self.lua('require("orrery.engine") for _,c in ipairs(CALLS) do if c[1]=="bind" then print(c[2]) end end')

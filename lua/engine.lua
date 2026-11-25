@@ -127,6 +127,14 @@ local function has_neighbour(space, win, dir)
     return false
 end
 
+-- A window can carry the class or the desktop id of its app, in any case, depending on the toolkit
+local function is_app(app, class)
+    for _, c in ipairs(app.classes or { app.class }) do
+        if c:lower() == (class or ""):lower() then return true end
+    end
+    return false
+end
+
 local function active_in(space)
     local win = hl.get_active_window()
     if win and win.workspace and win.workspace.name == space then return win end
@@ -153,7 +161,7 @@ function M.toggle(id)
         if area.bring_back then
             for _, space in ipairs(area.spaces) do
                 for _, app in ipairs(space.apps) do
-                    if win.class == app.class and not (win.workspace and contains(area, win.workspace.name)) then
+                    if is_app(app, win.class) and not (win.workspace and contains(area, win.workspace.name)) then
                         hl.dispatch(hl.dsp.window.move({ window = win, workspace = space.name, follow = false }))
                     end
                 end
@@ -162,7 +170,10 @@ function M.toggle(id)
     end
     for _, space in ipairs(area.spaces) do
         for _, app in ipairs(space.apps) do
-            if app.autostart and app.command ~= "" and not running[app.class] then
+            local open = false
+            for class in pairs(running) do open = open or is_app(app, class) end
+            -- Starting an app that is already open would bring its window, and its workspace, to the front
+            if app.autostart and app.command ~= "" and not open then
                 hl.dispatch(hl.dsp.exec_cmd(app.command, { workspace = space.name .. " silent" }))
             end
         end
