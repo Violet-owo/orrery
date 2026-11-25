@@ -50,6 +50,20 @@ paru -Bi .                    # or: makepkg -si
 Not on the AUR yet. Update by running the same commands again; remove with `sudo pacman -Rns orrery-caelestia`
 (first turn it off in *Health*, and remove what you enabled in *Startup* and *Login*).
 
+### Channels
+
+| Channel | Branch | Get it |
+|---|---|---|
+| **Stable** | [`main`](https://github.com/Violet-owo/orrery/tree/main) | the commands above |
+| **Beta** | [`beta`](https://github.com/Violet-owo/orrery/tree/beta) | fixes first, less tested: use this `curl` instead |
+
+```sh
+curl -LO https://raw.githubusercontent.com/Violet-owo/orrery/beta/packaging/PKGBUILD
+```
+
+Betas sort before the final version, so installing the stable release replaces them. To go back to an older stable release, run the
+stable commands again and confirm the downgrade. Reports on the beta are welcome in the [issues](https://github.com/Violet-owo/orrery/issues).
+
 From source, without installing (no system features):
 
 ```sh
