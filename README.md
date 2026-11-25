@@ -40,8 +40,13 @@ English and Italian. Fully usable without a mouse.
 Orrery needs [Caelestia](https://github.com/caelestia-dots/caelestia) (shell and dotfiles, Lua configuration) on Hyprland 0.55 or newer.
 
 ```sh
-paru -S orrery-caelestia      # AUR, once published
+mkdir orrery && cd orrery
+curl -LO https://github.com/Violet-owo/orrery/releases/latest/download/PKGBUILD
+paru -Bi .                    # or: makepkg -si
 ```
+
+Not on the AUR yet. Update by running the same commands again; remove with `sudo pacman -Rns orrery-caelestia`
+(first turn it off in *Health*, and remove what you enabled in *Startup* and *Login*).
 
 From source, without installing (no system features):
 
