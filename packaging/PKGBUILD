@@ -11,7 +11,7 @@ depends=('caelestia-shell' 'quickshell-git' 'hyprland' 'python' 'polkit' 'xdg-ut
 optdepends=('greetd: login screen' 'cage: login screen' 'quickshell-greetd: login screen')
 checkdepends=('lua')
 source=("$url/releases/download/v$pkgver/orrery-$pkgver.tar.gz")
-sha256sums=('e1d0c1730ed799961c62fbd3edaf8bb1ab0bdaeb941409bf5344e255872d2cee')
+sha256sums=('ae33c926cdcef3594f0e865c7dc618f811bbae37c2fd27278c3faa92d9d29c38')
 
 check() {
   cd "orrery-$pkgver"
