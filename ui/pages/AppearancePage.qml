@@ -52,6 +52,7 @@ Page {
             spacing: 4
             Txt { text: "Orrery"; size: 34; weight: Font.Bold; color: Theme.fgPrimary }
             Txt { text: I18n.tr("Extra settings for Caelestia"); color: Theme.fgPrimary }
+            Txt { text: I18n.tr("by %1").replace("%1", Ui.author); color: Qt.alpha(Theme.fgPrimary, 0.75); size: 12 }
         }
     }
 

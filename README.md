@@ -9,6 +9,8 @@
 Areas, keyboard, default apps, wallpapers and login for the [Caelestia](https://github.com/caelestia-dots) desktop on Hyprland,
 in an app that looks and moves like the shell itself.
 
+By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
+
 [Install](#install) · [What it does](#what-it-does) · [Keyboard](#keyboard) · [How it stays safe](#how-it-stays-safe) · [Italiano](#italiano)
 
 <img src="docs/areas.png" width="49%" alt="Areas"> <img src="docs/wallpapers.png" width="49%" alt="Wallpapers, light theme">
@@ -117,6 +119,8 @@ con lo stesso stile e le stesse animazioni della shell. È in italiano e in ingl
 Le modifiche a Hyprland partono solo con **Applica**, e si possono annullare da **Stato**.
 
 ## Credits and license
+
+Designed and developed by **[Violet Miller](https://portfolio.violetvrc30.workers.dev/)**.
 
 GPL-3.0-only, see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). Built on the work of
 [Caelestia](https://github.com/caelestia-dots) by Soramane and contributors, [Quickshell](https://quickshell.org),

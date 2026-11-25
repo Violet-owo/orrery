@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Credits, portfolio and source links in *Health → About*
+- Installation from the GitHub release
+
 ## 0.1.0
 
 First release.

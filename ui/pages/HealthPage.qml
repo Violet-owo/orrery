@@ -34,4 +34,27 @@ Page {
     Head { text: I18n.tr("Orrery") }
     Tile { first: true; icon: "undo"; label: I18n.tr("Undo the last apply"); sub: I18n.tr("Restores the files as they were before"); Btn { text: I18n.tr("Undo"); enabled: Backend.st.canUndo && !Backend.busy; onClicked: Backend.simple("undo", I18n.tr("Restored")) } }
     Tile { last: true; icon: "extension_off"; label: I18n.tr("Turn Orrery off"); sub: I18n.tr("Removes it from the Hyprland configuration and keeps your choices"); Btn { text: I18n.tr("Turn off"); enabled: Backend.st.active && !Backend.busy; onClicked: Backend.simple("disable", I18n.tr("Turned off")) } }
+
+    Head { text: I18n.tr("About") }
+    Tile {
+        first: true
+        icon: "person"
+        iconFill: 1
+        label: I18n.tr("Developed by")
+        sub: Ui.portfolio.replace("https://", "").replace(/\/$/, "")
+        clickable: true
+        onClicked: Ui.openUrl(Ui.portfolio)
+        Txt { text: Ui.author; color: Theme.primary; weight: Font.Medium }
+        Ico { text: "open_in_new"; size: 18; color: Theme.fgVariant }
+    }
+    Tile {
+        icon: "code"
+        label: I18n.tr("Source code")
+        sub: Ui.source.replace("https://", "")
+        clickable: true
+        onClicked: Ui.openUrl(Ui.source)
+        Txt { text: "GPL-3.0"; color: Theme.primary; weight: Font.Medium }
+        Ico { text: "open_in_new"; size: 18; color: Theme.fgVariant }
+    }
+    Tile { last: true; icon: "info"; label: I18n.tr("Version"); sub: I18n.tr("Unofficial: not made by the Caelestia project"); Txt { text: Ui.version; color: Theme.primary; weight: Font.Medium } }
 }

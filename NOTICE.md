@@ -1,4 +1,8 @@
-# Third-party notices
+# Notices
+
+Orrery is copyright © 2026 Violet Miller (<https://portfolio.violetvrc30.workers.dev/>), licensed under GPL-3.0-only.
+
+## Third parties
 
 - `helper/greeter/Pam.qml`, and the theme produced by `helper/orrery-greeter-build`, derive from
   [caelestia-dots/shell](https://github.com/caelestia-dots/shell) (GPL-3.0).
