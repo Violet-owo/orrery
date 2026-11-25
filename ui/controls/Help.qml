@@ -8,7 +8,7 @@ Item {
     property bool open: false
     readonly property var rows: [
         ["↑ ↓ ← →", "Move between options"], ["Enter / Space", "Open, press or toggle"], ["← →", "Change a slider (Home / End for the limits)"],
-        ["Esc", "Back: close, leave the field, go to the menu"], ["Ctrl + F  /", "Search settings"], ["Ctrl + 1…8", "Open a page"], ["Ctrl + Tab", "Next page"],
+        ["Esc", "Back: close, leave the field, go to the menu"], ["Ctrl + F  /", "Search settings"], ["Ctrl + 1…9", "Open a page"], ["Ctrl + Tab", "Next page"],
         ["Alt + ← →", "Previous / next area"], ["Page ↑ ↓", "Scroll"], ["Ctrl + S", "Apply"], ["Ctrl + Z / Ctrl + Shift + Z", "Undo / redo an edit"],
         ["Delete", "Remove the selected app or layout"], ["Ctrl + Q", "Close Orrery"], ["F1", "This guide"]]
 

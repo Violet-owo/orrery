@@ -6,7 +6,7 @@
 
 **The settings Caelestia doesn't have yet.**
 
-Areas, keyboard, default apps, wallpapers and login for the [Caelestia](https://github.com/caelestia-dots) desktop on Hyprland,
+Areas, keyboard, default apps, wallpapers, power and login for the [Caelestia](https://github.com/caelestia-dots) desktop on Hyprland,
 in an app that looks and moves like the shell itself.
 
 By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
@@ -33,6 +33,7 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 | **Startup** | Keyboard backlight at boot. |
 | **Login** | Caelestia's lock screen as your greetd login, following your colours and wallpaper. *Experimental.* |
 | **Appearance** | Follows Caelestia's palette live, plus transparency, motion, rounding and language. |
+| **Power** | When to lock, turn the screen off and suspend, on battery and while charging. |
 | **Health** | Checks for the usual breakages, undo, and an off switch. |
 
 English and Italian. Fully usable without a mouse.
@@ -83,7 +84,7 @@ git clone https://github.com/Violet-owo/orrery && orrery/bin/orrery
 | Keys | |
 |---|---|
 | Arrows, `Enter`, `Space`, `Esc` | move, activate, go back |
-| `Ctrl+1…8`, `Ctrl+Tab` | pages |
+| `Ctrl+1…9`, `Ctrl+Tab` | pages |
 | `Ctrl+F` or `/` | search settings |
 | `Alt+←/→` | previous / next area |
 | `Ctrl+S`, `Ctrl+Z`, `Ctrl+Shift+Z` | apply, undo, redo |
@@ -96,6 +97,7 @@ Inside an area: `Super+←/→` changes workspace, `Super+Shift+←/→` brings 
 
 - **Nothing changes until you press Apply.** Only *Appearance* and *Wallpapers* act at once, and *Startup* and *Login* after your password.
 - It writes its own files in `~/.config/caelestia/orrery/` and one marked block in `hypr-user.lua`. It never edits Caelestia's dotfiles.
+  *Wallpapers* and *Power* change only their own keys in Caelestia's `shell.json`.
 - Every apply is backed up. If Hyprland reports new errors, the previous files come back by themselves.
 - System changes go through a small `pkexec` helper with four fixed, validated actions. The app never runs as root.
 - The login falls back to the previous greeter if it fails. If the screen ever stays black: `Ctrl+Alt+F3`, log in, then
@@ -128,7 +130,7 @@ Translations live in `ui/i18n/`: English strings are the keys.
 
 ## Italiano
 
-Orrery aggiunge a Caelestia le impostazioni che mancano: aree (`Super+S/D/M`…), tastiera, app predefinite, sfondi, retroilluminazione e login,
+Orrery aggiunge a Caelestia le impostazioni che mancano: aree (`Super+S/D/M`…), tastiera, app predefinite, sfondi, energia, retroilluminazione e login,
 con lo stesso stile e le stesse animazioni della shell. È in italiano e in inglese, e si usa anche solo da tastiera (`F1` per la guida).
 Le modifiche a Hyprland partono solo con **Applica**, e si possono annullare da **Stato**.
 

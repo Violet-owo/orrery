@@ -62,7 +62,13 @@ s = s.replace("            Help { id: help }", '''            TestCase {
                     const close = windowButtons.children[1]; mouseClick(close, 20, 20); wait(600); check("X asks when there are changes", picker.open);
                     key(Qt.Key_Escape); wait(500); check("esc keeps editing", !picker.open);
                     key(Qt.Key_Z, Qt.ControlModifier); wait(200); check("nothing left to save", !Backend.dirty);
-                    for (let i = 0; i < Ui.nav.length; i++) { Ui.go(i); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("page " + i + " reachable by keyboard", i === 7 || Nav.current?.navigable === true && !Nav.inside(Nav.current, side)); }
+                    Ui.go(7); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("power: first option", label() === I18n.tr("Lock"));
+                    key(Qt.Key_Return); wait(400); key(Qt.Key_Down); key(Qt.Key_Return); wait(600); check("power: picking a time: " + Backend.cfg.power.lock, Backend.cfg.power.lock === 300);
+                    stack.currentItem.setBattery(3600); check("power: charging follows battery", Backend.cfg.power.ac === 3600);
+                    stack.currentItem.setAc(600); check("power: battery follows charging", Backend.cfg.power.battery === 600);
+                    stack.currentItem.setAc(0); check("power: never while charging", Backend.cfg.power.battery === 600 && Backend.cfg.power.ac === 0);
+                    Backend.discard(); wait(200); check("power: discard", !Backend.dirty);
+                    for (let i = 0; i < Ui.nav.length; i++) { Ui.go(i); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("page " + i + " reachable by keyboard", i === 8 || Nav.current?.navigable === true && !Nav.inside(Nav.current, side)); }
                     console.log("INPUT DONE failures=" + bad);
                     last.start(); // outside the nested test event loop
                 }

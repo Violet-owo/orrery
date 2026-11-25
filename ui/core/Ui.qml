@@ -14,6 +14,7 @@ Singleton {
         { icon: "dashboard", name: "Areas", sub: "Super+S, D, M and yours", group: 1 },
         { icon: "power_settings_new", name: "Startup", sub: "Keyboard light", group: 2 },
         { icon: "login", name: "Login", sub: "Lock screen at boot", group: 2 },
+        { icon: "bedtime", name: "Power", sub: "Lock, screen off, suspend", group: 2 },
         { icon: "health_and_safety", name: "Health", sub: "Checks, undo, credits", group: 3 }]
 
     // What the search knows: [page, English label]
@@ -23,13 +24,14 @@ Singleton {
         [3, "Manage the keyboard with Orrery"], [3, "Add a layout"], [3, "Switch layout"], [3, "Num Lock at startup"], [3, "Repeat rate"], [3, "Repeat delay"],
         [4, "Customise this area"], [4, "Shortcut"], [4, "Add an app"], [4, "Move between workspaces with the arrows"], [4, "Wrap around"], [4, "Bring apps back"], [4, "Opening"], [4, "Changing workspace"],
         [5, "Turn on at startup"], [5, "Level"], [6, "Required packages"], [6, "Scale"], [6, "Numeric keypad always types digits"],
-        [7, "Developed by"], [7, "Source code"], [7, "Undo the last apply"], [7, "Turn Orrery off"]]
+        [7, "Lock"], [7, "Turn the screen off"], [7, "Suspend"], [7, "Suspend on battery"], [7, "Suspend while charging"], [7, "Lock before suspending"], [7, "Stay awake while something plays"], [7, "Stay awake while charging"], [7, "Hibernate after a while asleep"], [7, "Caelestia's defaults"],
+        [8, "Developed by"], [8, "Source code"], [8, "Undo the last apply"], [8, "Turn Orrery off"]]
     property string target: "" // label to highlight after a search
 
     property int page: parseInt(Quickshell.env("ORRERY_PAGE") || "0")
     readonly property int startScroll: parseInt(Quickshell.env("ORRERY_SCROLL") || "0")
     property int area: parseInt(Quickshell.env("ORRERY_AREA") || "0")
-    readonly property string version: "0.1.2beta2"
+    readonly property string version: "0.2.0beta1"
     readonly property string author: "Violet Miller"
     readonly property string portfolio: "https://portfolio.violetvrc30.workers.dev/"
     readonly property string source: "https://github.com/Violet-owo/orrery"

@@ -329,6 +329,150 @@ def with_hook(text):
     return text[:start].rstrip("\n") + "\n\n" + block + "\n" + text[start:].lstrip("\n")
 
 
+# --- power -------------------------------------------------------------------------
+# Lives in Caelestia's shell.json (general.idle), which stays the only source of truth: nothing is copied in config.json.
+# A user list replaces Caelestia's defaults entirely (2.5.0), so the rows are always written together.
+IDLE_ROWS = [{"timeout": 180, "idleAction": "lock"},
+             {"timeout": 300, "idleAction": "dpms off", "returnAction": "dpms on"},
+             {"timeout": 600, "idleAction": ["suspendThenHibernate"]}]
+IDLE_FLAGS = {"lockBefore": ("lockBeforeSleep", True), "audio": ("inhibitWhenAudio", True), "charging": ("inhibitWhenCharging", False)}
+IDLE_TIMES = ("lock", "screen", "battery", "ac")
+SLEEP = {"suspend": "suspend", "hibernate": "suspendThenHibernate"}
+
+
+def row_kind(row):
+    """lock / screen / suspend / hibernate; None for the user's own rows, which are never touched."""
+    a = row.get("idleAction") if isinstance(row, dict) else None
+    if isinstance(a, str):
+        return {"lock": "lock", "dpms off": "screen"}.get(a)
+    if not isinstance(a, list) or not a or not all(isinstance(x, str) for x in a):
+        return None
+    words = [re.sub(r"[-_]", "", x).lower() for x in a]
+    if len(words) == 2 and words[0] in ("systemctl", "loginctl"):
+        words = words[1:]
+    return {("suspend",): "suspend", ("suspendthenhibernate",): "hibernate", ("locksession",): "lock"}.get(tuple(words))
+
+
+def idle_json():
+    general = shell_json().get("general", {})
+    idle = general.get("idle", {}) if isinstance(general, dict) else None
+    if not isinstance(idle, dict) or not isinstance(idle.get("timeouts", []), list):
+        raise Bad("shell.json: general.idle is not valid")
+    return idle
+
+
+def idle_rows(idle):
+    """All the rows, and the ones Orrery handles: the first of each kind."""
+    rows, mine = copy.deepcopy(idle.get("timeouts", IDLE_ROWS)), {}
+    for n, r in enumerate(rows):
+        k = row_kind(r)
+        if k in SLEEP:
+            k = "battery" if r.get("inhibitWhenCharging") is True else "ac"
+        if k:
+            mine.setdefault(k, n)
+    return rows, mine
+
+
+def seconds(row):
+    t = row.get("timeout", 300)
+    return int(t) if row.get("enabled", True) is not False and isinstance(t, (int, float)) and t > 0 else 0
+
+
+def read_power(idle=None):
+    idle = idle_json() if idle is None else idle
+    rows, mine = idle_rows(idle)
+    out = {k: seconds(rows[mine[k]]) if k in mine else 0 for k in IDLE_TIMES}
+    # The row without conditions also works on battery: the shorter one wins
+    out["battery"] = min([t for t in (out["battery"], out["ac"]) if t], default=0)
+    kinds = [row_kind(rows[mine[k]]) for k in ("ac", "battery") if k in mine]
+    out["action"] = kinds[0] if kinds else "hibernate"
+    for k, (name, default) in IDLE_FLAGS.items():
+        v = idle.get(name, default)
+        out[k] = v if isinstance(v, bool) else default
+    return out
+
+
+def check_power(p):
+    out = {}
+    for k, name in (("lock", "lock"), ("screen", "screen off"), ("battery", "suspend on battery"), ("ac", "suspend while charging")):
+        v = p.get(k)
+        out[k] = int(number(v, 10, 86400, name)) if v != 0 or isinstance(v, bool) else 0
+    if out["ac"] and not 0 < out["battery"] <= out["ac"]:
+        raise Bad("suspend: the time on battery cannot be longer than the one while charging")
+    if p.get("action") not in SLEEP:
+        raise Bad("suspend: unknown action")
+    out["action"] = p["action"]
+    for k in IDLE_FLAGS:
+        out[k] = bool(p.get(k))
+    return out
+
+
+def with_power(idle, new):
+    """general.idle with the new values, leaving everything else in it alone."""
+    old, idle = read_power(idle), copy.deepcopy(idle)
+    for k, (name, default) in IDLE_FLAGS.items():
+        if new[k] != old[k]:
+            idle[name] = new[k]
+            if new[k] == default:
+                del idle[name]
+    if all(new[k] == old[k] for k in (*IDLE_TIMES, "action")):
+        return idle
+    rows, mine = idle_rows(idle)
+    want = {"lock": new["lock"], "screen": new["screen"], "ac": new["ac"],
+            "battery": new["battery"] if new["battery"] != new["ac"] else 0}
+    sleep = copy.deepcopy(rows[mine["ac"]] if "ac" in mine else rows[mine["battery"]] if "battery" in mine else IDLE_ROWS[2])
+    sleep.pop("inhibitWhenCharging", None)
+    fresh = {"lock": IDLE_ROWS[0], "screen": IDLE_ROWS[1], "battery": {**sleep, "inhibitWhenCharging": True}, "ac": sleep}
+    for k in ("lock", "screen", "battery", "ac"):
+        if k not in mine:
+            if not want[k]:
+                continue
+            mine[k] = len(rows)
+            rows.append(copy.deepcopy(fresh[k]))
+        row = rows[mine[k]]
+        if want[k]:
+            row["timeout"] = want[k]
+            row.pop("enabled", None)
+        else:
+            row["enabled"] = False
+        if k in ("battery", "ac") and row_kind(row) != new["action"]:
+            row["idleAction"] = [SLEEP[new["action"]]]
+    if rows == IDLE_ROWS:
+        idle.pop("timeouts", None)      # back to Caelestia's defaults
+    else:
+        idle["timeouts"] = rows
+    return idle
+
+
+def put_idle(idle):
+    """Replaces general.idle only. Caelestia reloads shell.json live."""
+    d = shell_json()
+    general = d.setdefault("general", {})
+    if idle:
+        general["idle"] = idle
+    else:
+        general.pop("idle", None)
+        if not general:
+            del d["general"]
+    write(CAEL / "shell.json", json.dumps(d, indent=4, ensure_ascii=False) + "\n")
+
+
+def has_battery():
+    """The computer's own: mice and headphones report one too, with scope Device."""
+    for d in Path("/sys/class/power_supply").glob("*"):
+        try:
+            if (d / "type").read_text().strip() == "Battery" and not ((d / "scope").exists() and (d / "scope").read_text().strip() == "Device"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def can_hibernate():
+    r = run("busctl", "call", "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "CanHibernate")
+    return r.returncode == 0 and any(x in r.stdout for x in ('"yes"', '"challenge"'))
+
+
 # --- backup / apply ---------------------------------------------------------------------
 TRACKED = {"hypr-user.lua": USER_LUA, "engine.lua": LUADIR / "engine.lua", "settings.lua": LUADIR / "settings.lua",
            "mimeapps.list": MIMEAPPS, "config.json": CONFIG}
@@ -351,6 +495,8 @@ def restore(d):
             write(path, (d / name).read_text())
         elif path.exists():
             path.unlink()
+    if (d / "idle.json").exists():      # only what Orrery changed, not the whole shell.json
+        put_idle(json.loads((d / "idle.json").read_text()))
 
 
 def hypr_errors():
@@ -364,13 +510,22 @@ def hypr_errors():
 
 
 def apply(cfg):
+    power = check_power(cfg["power"]) if isinstance(cfg.get("power"), dict) else None
     cfg = validate(cfg)
     apps = desktop_apps()
+    idle = None
+    if power:
+        old = idle_json()
+        idle = with_power(old, power)
     if not (CONF / "hypr/hyprland.lua").exists() and not DRY:
         raise Bad("Caelestia's Hyprland config was not found")
     before = hypr_errors()
     d = backup()
+    if idle is not None and idle != old:
+        (d / "idle.json").write_text(json.dumps(old))
     try:
+        if idle is not None and idle != old:
+            put_idle(idle)
         write(LUADIR / "engine.lua", (SHARE / "lua/engine.lua").read_text())
         write(LUADIR / "settings.lua", settings_lua(cfg, apps))
         write(USER_LUA, with_hook(USER_LUA.read_text() if USER_LUA.exists() else ""))
@@ -388,7 +543,7 @@ def apply(cfg):
         restore(d)
         hypr_errors()
         raise Bad("Hyprland rejected the changes, previous settings restored: " + errors[:400])
-    return {"ok": True, "config": cfg, "backup": d.name}
+    return {"ok": True, "config": {**cfg, "power": power}, "backup": d.name}
 
 
 def undo():
@@ -583,6 +738,10 @@ def state():
         cfg["keyboard"]["layouts"] = ok[:4] or cfg["keyboard"]["layouts"]
         cfg["keyboard"]["numlock"] = bool(option("input:numlock_by_default"))
         cfg["areas"] = presets(apps)
+    try:
+        cfg["power"] = read_power()
+    except (Bad, ValueError):
+        cfg["power"] = None
     helper = "/usr/lib/orrery/orrery-helper"
     walls = wall_state()
     greeter = ""
@@ -596,6 +755,7 @@ def state():
         "roles": roles_for(apps), "defaults": {r: system_default(r) for r in ALL_ROLES}, "layouts": xkb_layouts(), "windows": windows(), "conflicts": conflicts(),
         "active": USER_LUA.exists() and BEGIN in USER_LUA.read_text(),
         "walls": walls,
+        "power": {"defaults": read_power({}), "hibernate": can_hibernate(), "battery": has_battery()},
         "canUndo": BACKUPS.is_dir() and any(BACKUPS.iterdir()),
         "system": {
             "helper": os.path.exists(helper), "caelestia": (CONF / "hypr/hyprland.lua").exists(),

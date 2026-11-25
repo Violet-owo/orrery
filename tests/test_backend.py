@@ -118,6 +118,78 @@ class T(unittest.TestCase):
         self.assertFalse(self.ctl("wallpapers", {}).get("ok", True))
         self.assertEqual(sj.read_text(), "{broken")
 
+    def power(self, shell=None, **kw):
+        sj = self.t / "caelestia/shell.json"
+        if shell is not None:
+            sj.write_text(json.dumps(shell))
+        c = self.cfg(power={**self.ctl("state")["config"]["power"], **kw})
+        return self.ctl("apply", c), (json.loads(sj.read_text()) if sj.exists() else None)
+
+    def test_power_untouched(self):
+        self.assertEqual(self.power()[1], None)      # nothing changed: no file is created
+        sj = self.t / "caelestia/shell.json"
+        sj.write_text('{"lock":   {}}')
+        self.assertTrue(self.power()[0]["ok"])
+        self.assertEqual(sj.read_text(), '{"lock":   {}}')
+
+    def test_power_times(self):
+        base = {"paths": {"wallpaperDir": "/x"}, "general": {"logo": "a"}}
+        r, d = self.power(base, battery=900, ac=3600)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual((d["paths"], d["general"]["logo"]), (base["paths"], "a"))
+        t = d["general"]["idle"]["timeouts"]
+        self.assertEqual([(x["timeout"], x.get("inhibitWhenCharging")) for x in t if x["idleAction"] == ["suspendThenHibernate"]],
+                         [(3600, None), (900, True)])
+        self.assertEqual([x["idleAction"] for x in t[:2]], ["lock", "dpms off"])     # the list replaces the defaults: all rows
+        self.assertEqual(t[1]["returnAction"], "dpms on")
+        p = self.ctl("state")["config"]["power"]
+        self.assertEqual((p["battery"], p["ac"]), (900, 3600))
+        r, d = self.power(battery=900, ac=0, screen=0, action="suspend")             # never while charging
+        p = self.ctl("state")["config"]["power"]
+        self.assertEqual((p["battery"], p["ac"], p["screen"], p["action"]), (900, 0, 0, "suspend"))
+        r, d = self.power(**self.ctl("state")["power"]["defaults"])
+        p, want = self.ctl("state")["config"]["power"], self.ctl("state")["power"]["defaults"]
+        self.assertEqual(p, want)
+
+    def test_power_defaults_leave_no_trace(self):
+        base = {"general": {"logo": "a"}}
+        self.power(base, lock=60, audio=False, charging=True, lockBefore=False)
+        r, d = self.power(**self.ctl("state")["power"]["defaults"])
+        self.assertEqual(d, base)
+
+    def test_power_keeps_own_rows(self):
+        own = [{"timeout": 30, "idleAction": ["notify-send", "x"]}, {"timeout": 200, "idleAction": "lock", "respectInhibitors": False},
+               {"timeout": 500, "idleAction": ["systemctl", "suspend"], "inhibitWhenAudio": True}, {"timeout": 999, "idleAction": "lock"}, "junk"]
+        r, d = self.power({"general": {"idle": {"timeouts": own, "future": 1}}}, lock=240, battery=300)
+        self.assertTrue(r["ok"], r)
+        t = d["general"]["idle"]["timeouts"]
+        self.assertEqual((t[0], t[3], t[4], d["general"]["idle"]["future"]), (own[0], own[3], "junk", 1))
+        self.assertEqual(t[1], {"timeout": 240, "idleAction": "lock", "respectInhibitors": False})
+        self.assertEqual(t[2], own[2])
+        self.assertEqual(t[5], {"timeout": 300, "idleAction": ["systemctl", "suspend"], "inhibitWhenAudio": True, "inhibitWhenCharging": True})
+        self.assertEqual(len(t), 6)      # a row that is off and never existed is not added
+
+    def test_power_undo(self):
+        base = {"general": {"idle": {"timeouts": [{"timeout": 77, "idleAction": "lock"}]}}, "lock": {}}
+        self.power(base, lock=600)
+        sj = self.t / "caelestia/shell.json"
+        d = json.loads(sj.read_text()); d["lock"] = {"later": True}; sj.write_text(json.dumps(d))
+        self.assertTrue(self.ctl("undo")["ok"])
+        self.assertEqual(json.loads(sj.read_text()), {**base, "lock": {"later": True}})   # later changes stay
+
+    def test_power_rejects(self):
+        for bad in (dict(battery=900, ac=600), dict(battery=0, ac=600), dict(lock=-1), dict(lock="x"), dict(lock=True), dict(lock=False), dict(screen=5), dict(action="poweroff")):
+            r, d = self.power({"a": 1}, **bad)
+            self.assertFalse(r.get("ok", True), bad)
+            self.assertEqual(d, {"a": 1})
+        sj = self.t / "caelestia/shell.json"
+        for broken in ("{broken", '{"general": {"idle": []}}', '{"general": {"idle": {"timeouts": 3}}}'):
+            sj.write_text(broken)
+            self.assertIsNone(self.ctl("state")["config"]["power"])
+            self.assertTrue(self.ctl("apply", self.cfg(power=None))["ok"])    # the rest still works
+            self.assertFalse(self.ctl("apply", self.cfg(power=self.ctl("state")["power"]["defaults"])).get("ok", True))
+            self.assertEqual(sj.read_text(), broken)
+
     def test_prefs(self):
         self.assertTrue(self.ctl("prefs", {"transparent": False, "junk": 1})["ok"])
         self.assertTrue(self.ctl("prefs", {"base": 0.5, "language": "it"})["ok"])

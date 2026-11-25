@@ -45,7 +45,7 @@ ShellRoot {
                 if (e.key === Qt.Key_F1) { help.open = !help.open; return true; }
                 if (help.open) { if (e.key === Qt.Key_Escape) help.open = false; return true; }
                 if (picker.open) return false;
-                if (ctrl && e.key >= Qt.Key_1 && e.key <= Qt.Key_8) { Ui.go(e.key - Qt.Key_1); return Nav.toMenu(); }
+                if (ctrl && e.key >= Qt.Key_1 && e.key <= Qt.Key_9) { Ui.go(e.key - Qt.Key_1); return Nav.toMenu(); }
                 if (ctrl && (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab || e.key === Qt.Key_PageDown || e.key === Qt.Key_PageUp)) {
                     const back = e.key === Qt.Key_Backtab || e.key === Qt.Key_PageUp || (e.key === Qt.Key_Tab && shift);
                     Ui.go((Ui.page + (back ? bg.nav.length - 1 : 1)) % bg.nav.length);
@@ -280,7 +280,7 @@ ShellRoot {
                 anchors { fill: parent; leftMargin: bg.navWidth + 40; topMargin: 10; rightMargin: 12; bottomMargin: 10 }
                 clip: true
 
-                readonly property var pages: [appearance, wallpapers, apps, keyboard, areas, startup, login, health]
+                readonly property var pages: [appearance, wallpapers, apps, keyboard, areas, startup, login, power, health]
                 property int shown: -1
                 property int dir: 1
 
@@ -355,6 +355,7 @@ ShellRoot {
                 Component { id: areas; AreasPage {} }
                 Component { id: startup; StartupPage {} }
                 Component { id: login; LoginPage {} }
+                Component { id: power; PowerPage {} }
                 Component { id: health; HealthPage {} }
 
                 // Unsaved changes

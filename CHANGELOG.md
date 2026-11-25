@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0beta1
+
+- Power, a new page: when to lock, turn the screen off and suspend, with separate times on battery and while charging,
+  staying awake during playback or while charging, and locking before suspending. *Health* is now `Ctrl+9`
+- Rows of your own in Caelestia's idle list are kept, and undo restores only what Orrery changed there
+
 ## 0.1.2beta2
 
 - Login on several monitors: the lock is shown whole on every screen instead of being stretched across them.
