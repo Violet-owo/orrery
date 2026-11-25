@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2beta2
+
+- Login on several monitors: the lock is shown whole on every screen instead of being stretched across them.
+  Typing is mirrored; mouse and buttons work on the first screen
+
 ## 0.1.2beta1
 
 - Areas reopen exactly where they were left: apps whose window name differs from the desktop entry (Telegram on Wayland)

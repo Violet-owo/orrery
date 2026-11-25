@@ -29,7 +29,7 @@ Singleton {
     property int page: parseInt(Quickshell.env("ORRERY_PAGE") || "0")
     readonly property int startScroll: parseInt(Quickshell.env("ORRERY_SCROLL") || "0")
     property int area: parseInt(Quickshell.env("ORRERY_AREA") || "0")
-    readonly property string version: "0.1.2beta1"
+    readonly property string version: "0.1.2beta2"
     readonly property string author: "Violet Miller"
     readonly property string portfolio: "https://portfolio.violetvrc30.workers.dev/"
     readonly property string source: "https://github.com/Violet-owo/orrery"

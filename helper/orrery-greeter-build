@@ -13,7 +13,7 @@ MAX = 40 * 1024 * 1024
 PATCHES = [
     ("import Quickshell.Wayland\n", "import Quickshell\nimport Quickshell.Wayland\n"),
     ("WlSessionLockSurface {\n    id: root\n",
-     "Item {\n    id: root\n\n    readonly property var screen: Quickshell.screens[0] ?? null\n"),
+     "Item {\n    id: root\n\n    property var screen: Quickshell.screens[0] ?? null\n"),
     ("    required property WlSessionLock lock\n", "    required property var lock\n"),
     ("    contentItem.Config.screen: screen.name\n", '    Config.screen: screen?.name ?? ""\n'),
     ("    contentItem.Tokens.screen: screen.name\n", '    Tokens.screen: screen?.name ?? ""\n'),
