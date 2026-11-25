@@ -1,0 +1,36 @@
+# Maintainer: Violet-owo
+pkgname=orrery-caelestia
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Extra settings for the Caelestia desktop: areas, keyboard, default apps, wallpapers, login (unofficial)"
+arch=('any')
+url="https://github.com/Violet-owo/orrery"
+license=('GPL-3.0-only')
+depends=('caelestia-shell' 'quickshell-git' 'hyprland' 'python' 'polkit' 'xdg-utils' 'xdg-user-dirs'
+         'ttf-material-symbols-variable')
+optdepends=('greetd: login screen' 'cage: login screen' 'quickshell-greetd: login screen')
+checkdepends=('lua')
+source=("$url/releases/download/v$pkgver/orrery-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+check() {
+  cd "orrery-$pkgver"
+  python tests/test_backend.py
+  python tests/test_helper.py
+}
+
+package() {
+  cd "orrery-$pkgver"
+  install -d "$pkgdir/usr/share/orrery"
+  cp -r ui "$pkgdir/usr/share/orrery/"
+  install -Dm644 -t "$pkgdir/usr/share/orrery/wallpapers" wallpapers/*.png
+  install -Dm644 -t "$pkgdir/usr/share/orrery/lua" lua/engine.lua
+  install -Dm755 -t "$pkgdir/usr/share/orrery/lib" lib/orreryctl.py
+  install -Dm755 -t "$pkgdir/usr/bin" bin/orrery
+  install -Dm755 -t "$pkgdir/usr/lib/orrery" helper/orrery-helper helper/orrery-greeter-build helper/orrery-greeter-session
+  install -Dm644 -t "$pkgdir/usr/lib/orrery/greeter" helper/greeter/*.qml
+  install -Dm644 -t "$pkgdir/usr/share/polkit-1/actions" helper/org.orrery.helper.policy
+  install -Dm644 -t "$pkgdir/usr/share/applications" packaging/orrery.desktop
+  install -Dm644 docs/logo.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/orrery.svg"
+  install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE NOTICE.md
+}

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# greetd greeter: Caelestia's lock screen through quickshell-greetd.
+# Falls back to the previously configured greeter if it exits early or with an error.
+set -u
+[[ -r /etc/orrery/login.env ]] && . /etc/orrery/login.env
+export XKB_DEFAULT_LAYOUT="${ORRERY_LAYOUT:-us}" XKB_DEFAULT_VARIANT="${ORRERY_VARIANT:-}"
+[[ "${ORRERY_DIGITS:-0}" == 1 ]] && export XKB_DEFAULT_OPTIONS=numpad:mac
+[[ "${ORRERY_SCALE:-1}" != 1 ]] && export QT_SCALE_FACTOR="$ORRERY_SCALE"
+export QSGREET_THEME=orrery QSGREET_COMPOSITOR=cage QSGREET_USER="${ORRERY_USER:-}" QSGREET_LAST_SESSION="${ORRERY_SESSION:-hyprland-uwsm}"
+export LANG="${LANG:-C.UTF-8}"
+if [[ -z "${XDG_RUNTIME_DIR:-}" || ! -d "${XDG_RUNTIME_DIR:-/nonexistent}" || ! -w "${XDG_RUNTIME_DIR:-/nonexistent}" ]]; then
+  XDG_RUNTIME_DIR=$(mktemp -d /tmp/orrery-greeter.XXXXXXXX); export XDG_RUNTIME_DIR
+fi
+export XDG_CACHE_HOME="$XDG_RUNTIME_DIR/orrery-greeter-cache"; mkdir -p "$XDG_CACHE_HOME"
+child=; trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 0' TERM INT HUP
+start=$SECONDS rc=127
+if [[ -x /usr/bin/quickshell-greetd-launcher ]]; then
+  systemd-cat -t orrery-greeter /usr/bin/quickshell-greetd-launcher & child=$!
+  wait "$child"; rc=$?; child=
+fi
+if ((rc != 0 || SECONDS - start < 3)); then
+  echo "greeter exited (rc=$rc): falling back to ${ORRERY_FALLBACK:-agreety}" | systemd-cat -t orrery-greeter -p warning
+  unset QT_SCALE_FACTOR XDG_CACHE_HOME XKB_DEFAULT_OPTIONS
+  exec sh -c "exec ${ORRERY_FALLBACK:-/usr/bin/agreety --cmd /usr/bin/start-hyprland}"
+fi

@@ -1,0 +1,6 @@
+packaging/pkg/
+packaging/src/
+*.pkg.tar.*
+*.tar.gz
+__pycache__/
+wallpapers/*.svg

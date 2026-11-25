@@ -1,0 +1,165 @@
+#!/usr/bin/python3 -I
+"""Orrery root helper, started through pkexec. Only the fixed actions below exist.
+
+  backlight LEVEL                                  0 removes the boot service
+  login-enable USER LAYOUT VARIANT SCALE DIGITS    VARIANT may be "-"
+  login-disable
+  login-sync
+"""
+import os, pwd, re, shlex, shutil, subprocess, sys
+from pathlib import Path
+
+ROOT = Path(os.environ["ORRERY_ROOT"]) if os.geteuid() != 0 and "ORRERY_ROOT" in os.environ else Path("/")
+FAKE = ROOT != Path("/")
+LIB = Path(__file__).resolve().parent
+UNITS = ROOT / "etc/systemd/system"
+GREETD, ENV = ROOT / "etc/greetd/config.toml", ROOT / "etc/orrery/login.env"
+SAVED = ROOT / "etc/orrery/greetd-config.toml.before-orrery"
+SESSION = "/usr/lib/orrery/orrery-greeter-session"
+COMMAND = re.compile(r'^(\s*command\s*=\s*)"([^"\\]*)"\s*$', re.M)
+
+
+def die(msg):
+    print(msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def sh(*cmd):
+    if FAKE:
+        print("would run:", *cmd)
+        return
+    if subprocess.run(cmd).returncode != 0:
+        die("failed: " + " ".join(cmd))
+
+
+def put(path, text, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".orrery-tmp")
+    tmp.write_text(text)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def backlight(level):
+    if not re.fullmatch(r"[0-9]", level):
+        die("invalid level")
+    unit = UNITS / "orrery-kbd-backlight.service"
+    if level == "0":
+        if unit.exists():
+            sh("systemctl", "disable", unit.name)
+            unit.unlink()
+            sh("systemctl", "daemon-reload")
+        return
+    leds = sorted((ROOT / "sys/class/leds").glob("*::kbd_backlight"))
+    if not leds:
+        die("no keyboard backlight found")
+    led = leds[0].name
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]+", led):
+        die("unexpected device name")
+    level = str(min(int(level), int((leds[0] / "max_brightness").read_text())))
+    put(unit, f"""[Unit]
+Description=Turn on the keyboard backlight at boot (Orrery)
+After=systemd-backlight@leds:{led}.service
+Before=display-manager.service
+ConditionPathExists=/sys/class/leds/{led}/brightness
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sh -c 'echo {level} > /sys/class/leds/{led}/brightness'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+""")
+    sh("systemctl", "daemon-reload")
+    sh("systemctl", "enable", unit.name)
+    sh("systemctl", "restart", unit.name)
+
+
+def caller(user):
+    try:
+        pw = pwd.getpwnam(user)
+    except KeyError:
+        die("unknown user")
+    if pw.pw_uid < 1000 or (not FAKE and os.environ.get("PKEXEC_UID") != str(pw.pw_uid)):
+        die("only the calling user can be configured")
+    return pw
+
+
+def login_enable(user, layout, variant, scale, digits):
+    pw = caller(user)
+    if not re.fullmatch(r"[a-z]{2,12}", layout) or not re.fullmatch(r"-|[A-Za-z0-9_-]{1,32}", variant):
+        die("invalid layout")
+    if not re.fullmatch(r"[0-9](\.[0-9]{1,4})?", scale) or not 0.5 <= float(scale) <= 4 or digits not in ("0", "1"):
+        die("invalid option")
+    for binary in ("usr/bin/cage", "usr/bin/quickshell-greetd-launcher"):
+        if not (ROOT / binary).exists():
+            die(f"missing /{binary}: install cage and quickshell-greetd")
+    text = GREETD.read_text() if GREETD.exists() else die("greetd is not configured")
+    found = COMMAND.findall(text)
+    if len(found) != 1:
+        die("greetd config.toml has an unexpected shape, nothing changed")
+    fallback = found[0][1]
+    if fallback == SESSION:
+        m = re.search(r"^ORRERY_FALLBACK=(.*)$", ENV.read_text(), re.M) if ENV.exists() else None
+        fallback = shlex.split(m[1])[0] if m else ""
+    sessions = [f.stem for f in sorted((ROOT / "usr/share/wayland-sessions").glob("hyprland*.desktop"))]
+    session = "hyprland-uwsm" if "hyprland-uwsm" in sessions else (sessions or die("no Hyprland session found"))[0]
+    sh(str(LIB / "orrery-greeter-build"), pw.pw_name)
+    values = {"ORRERY_USER": pw.pw_name, "ORRERY_LAYOUT": layout, "ORRERY_VARIANT": "" if variant == "-" else variant,
+              "ORRERY_SCALE": scale, "ORRERY_DIGITS": digits, "ORRERY_SESSION": session, "ORRERY_FALLBACK": fallback}
+    put(ENV, "".join(f"{k}={shlex.quote(v)}\n" for k, v in values.items()))
+    home = pw.pw_dir
+    if re.search(r"[\s%\\\"']", home):
+        die("unsupported home path")
+    put(UNITS / "orrery-login-sync.service", f"""[Unit]
+Description=Update the login screen with the current Caelestia look (Orrery)
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/sleep 4
+ExecStart=/usr/lib/orrery/orrery-helper login-sync
+ProtectSystem=strict
+ReadWritePaths=/usr/share/quickshell-greetd/themes
+PrivateTmp=yes
+""")
+    watched = (".local/state/caelestia/scheme.json", ".local/state/caelestia/wallpaper/path.txt",
+               ".config/caelestia/shell.json", ".face")
+    put(UNITS / "orrery-login-sync.path", "[Unit]\nDescription=Watch Caelestia's look for the login screen (Orrery)\n\n[Path]\n"
+        + "".join(f"PathChanged={home}/{w}\n" for w in watched) + "\n[Install]\nWantedBy=multi-user.target\n")
+    if found[0][1] != SESSION:
+        put(SAVED, text)
+        put(GREETD, COMMAND.sub(lambda m: f'{m[1]}"{SESSION}"', text))
+    sh("systemctl", "daemon-reload")
+    sh("systemctl", "enable", "--now", "orrery-login-sync.path")
+
+
+def login_disable():
+    if SAVED.exists():
+        put(GREETD, SAVED.read_text())
+        SAVED.unlink()
+    if (UNITS / "orrery-login-sync.path").exists():
+        sh("systemctl", "disable", "--now", "orrery-login-sync.path")
+    for u in ("orrery-login-sync.path", "orrery-login-sync.service"):
+        (UNITS / u).unlink(missing_ok=True)
+    sh("systemctl", "daemon-reload")
+
+
+def login_sync():
+    m = re.search(r"^ORRERY_USER=([a-z_][a-z0-9_-]*)$", ENV.read_text(), re.M) if ENV.exists() else None
+    if not m:
+        die("login not configured")
+    sh(str(LIB / "orrery-greeter-build"), m[1])
+
+
+ACTIONS = {"backlight": (backlight, 1), "login-enable": (login_enable, 5),
+           "login-disable": (login_disable, 0), "login-sync": (login_sync, 0)}
+
+if __name__ == "__main__":
+    fn, n = ACTIONS.get(sys.argv[1] if len(sys.argv) > 1 else "", (None, 0))
+    if fn is None or len(sys.argv) != n + 2:
+        die(__doc__)
+    if os.geteuid() != 0 and not FAKE:
+        die("must run as root")
+    os.umask(0o022)
+    fn(*sys.argv[2:])

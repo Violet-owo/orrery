@@ -1,0 +1,143 @@
+#!/usr/bin/python3 -I
+"""Builds the quickshell-greetd theme from Caelestia's lock screen.
+
+Usage: orrery-greeter-build USER [--source DIR] [--dest DIR] [--data DIR]
+Every patch must match exactly once, otherwise the build stops and the theme
+already installed is left untouched.
+"""
+import argparse, json, os, pwd, shutil, subprocess, sys, tempfile
+from pathlib import Path
+
+MAX = 40 * 1024 * 1024
+
+PATCHES = [
+    ("import Quickshell.Wayland\n", "import Quickshell\nimport Quickshell.Wayland\n"),
+    ("WlSessionLockSurface {\n    id: root\n",
+     "Item {\n    id: root\n\n    readonly property var screen: Quickshell.screens[0] ?? null\n"),
+    ("    required property WlSessionLock lock\n", "    required property var lock\n"),
+    ("    contentItem.Config.screen: screen.name\n", '    Config.screen: screen?.name ?? ""\n'),
+    ("    contentItem.Tokens.screen: screen.name\n", '    Tokens.screen: screen?.name ?? ""\n'),
+    ('    color: "transparent"\n\n    Connections {', "    Connections {"),
+    ("Config.lock.useWallpaper ? wallpaperBackground : screencopyBackground", "wallpaperBackground"),
+]
+
+
+def die(msg):
+    print(f"orrery-greeter-build: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def read_as_user(user, path):
+    """Reads a file with the user's permissions, never as root (symlinks)."""
+    cmd = ["head", "-c", str(MAX), "--", str(path)]
+    if os.geteuid() == 0:
+        cmd = ["runuser", "-u", user, "--"] + cmd
+    r = subprocess.run(cmd, capture_output=True)
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("user")
+    ap.add_argument("--source", type=Path, default=Path("/etc/xdg/quickshell/caelestia"))
+    ap.add_argument("--dest", type=Path, default=Path("/usr/share/quickshell-greetd/themes/orrery"))
+    ap.add_argument("--data", type=Path, default=Path("/usr/lib/orrery/greeter"))
+    ap.add_argument("--entry", type=Path, default=Path("/usr/share/quickshell-greetd/core/entry.qml"))
+    a = ap.parse_args()
+    home = Path(pwd.getpwnam(a.user).pw_dir)
+
+    for f in (a.source / "modules/lock/LockSurface.qml", a.data / "Pam.qml", a.data / "main.qml", a.entry):
+        if not f.is_file():
+            die(f"missing {f}")
+
+    a.dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix=".orrery-", dir=a.dest.parent))
+    try:
+        shell = tmp / "shell"
+        shutil.copytree(a.source, shell, symlinks=True)
+
+        surface = shell / "modules/lock/LockSurface.qml"
+        text = surface.read_text()
+        for old, new in PATCHES:
+            if text.count(old) != 1:
+                die(f"LockSurface.qml changed, patch does not apply: {old.strip()[:70]!r}")
+            text = text.replace(old, new)
+        surface.write_text(text)
+
+        pam_types = (shell / "modules/lock/Pam.qml").read_text()
+        for needle in ("enum PamState", "property string buffer", "signal flashMsg", "function handleKey"):
+            if needle not in pam_types:
+                die(f"Pam.qml changed: missing {needle!r}")
+        shutil.copyfile(a.data / "Pam.qml", shell / "modules/lock/Pam.qml")
+        # Lock.qml takes the real session lock: it must not be loadable in the greeter
+        (shell / "modules/lock/Lock.qml").unlink()
+        shutil.copyfile(a.data / "main.qml", shell / "_qsgreet-main.qml")
+        # Quickshell registers qs.* modules only when statically imported from the entry
+        entry = a.entry.read_text()
+        if entry.count("import QsGreet\n") != 1:
+            die("quickshell-greetd entry.qml changed")
+        (shell / "_qsgreet-entry.qml").write_text(
+            entry.replace("import QsGreet\n", 'import QsGreet\nimport "modules" as CaelestiaModules\nimport "modules/lock" as CaelestiaLock\n'))
+
+        # Look: colours, wallpaper, picture and visual options only
+        st = tmp / "state"
+        conf, state = st / "config/caelestia", st / "state/caelestia"
+        conf.mkdir(parents=True)
+        (state / "wallpaper").mkdir(parents=True)
+
+        out = {}
+        raw = read_as_user(a.user, home / ".config/caelestia/shell.json")
+        if raw:
+            try:
+                data = json.loads(raw)
+                out = {k: data[k] for k in ("appearance", "lock") if isinstance(data.get(k), dict)}
+                svc = data.get("services")
+                if isinstance(svc, dict):
+                    out["services"] = {k: svc[k] for k in ("clockFormat", "weatherLocation", "weatherUnits", "sensorUnits") if k in svc}
+            except ValueError:
+                pass
+        out.setdefault("lock", {}).update({"useWallpaper": True, "enableFprint": False, "hideNotifs": True})
+        out.setdefault("services", {})["gpuType"] = "None"   # do not wake the dGPU at login
+        (conf / "shell.json").write_text(json.dumps(out, indent=2))
+
+        raw = read_as_user(a.user, home / ".local/state/caelestia/scheme.json")
+        if raw:
+            json.loads(raw)
+            (state / "scheme.json").write_bytes(raw)
+        raw = read_as_user(a.user, home / ".local/state/caelestia/wallpaper/path.txt")
+        if raw:
+            wall = raw.decode(errors="replace").strip()
+            if wall.startswith(str(home)):
+                img = read_as_user(a.user, wall)
+                if img:
+                    target = state / "wallpaper" / ("current" + Path(wall).suffix.lower())
+                    target.write_bytes(img)
+                    wall = str(a.dest / target.relative_to(tmp))
+            (state / "wallpaper/path.txt").write_text(wall)
+        face = read_as_user(a.user, home / ".face")
+        if face:
+            (st / ".face").write_bytes(face)
+
+        (tmp / "theme.env").write_text("QSGREET_SURFACE=modules/lock/LockSurface.qml\n")
+        for root, dirs, files in os.walk(tmp):
+            for d in dirs:
+                os.chmod(os.path.join(root, d), 0o755)
+            for f in files:
+                p = os.path.join(root, f)
+                if not os.path.islink(p):
+                    os.chmod(p, 0o644)
+        os.chmod(tmp, 0o755)
+
+        old = a.dest.with_name(a.dest.name + ".old")
+        shutil.rmtree(old, ignore_errors=True)
+        if a.dest.exists():
+            a.dest.rename(old)
+        tmp.rename(a.dest)
+        shutil.rmtree(old, ignore_errors=True)
+        print(f"theme built in {a.dest}")
+    finally:
+        if tmp.exists():
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+main()

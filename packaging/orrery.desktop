@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Orrery
+Comment=Extra settings for Caelestia
+Comment[it]=Impostazioni extra per Caelestia
+Exec=orrery
+Icon=orrery
+Categories=Settings;
+Keywords=caelestia;hyprland;keyboard;login;
