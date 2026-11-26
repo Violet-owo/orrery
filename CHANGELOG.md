@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0beta3
 
 - GIFs and pictures, in *Wallpapers*: the animations Caelestia shows for media and in the shut down menu, and the
   pictures with no notifications, with a live preview and their speed. Choose them from your files, or search GIPHY
