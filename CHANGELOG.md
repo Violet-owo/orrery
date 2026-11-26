@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0beta2
 
 - Bar, a new page (`Ctrl+3`): order of the blocks, spaces between them, the screens that show the bar, and the volume
   and brightness indicators (microphone too, and how long they stay). Pages after it move by one; *Health* is `Ctrl+0`
