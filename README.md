@@ -13,8 +13,12 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 
 [Install](#install) · [What it does](#what-it-does) · [Keyboard](#keyboard) · [How it stays safe](#how-it-stays-safe) · [Italiano](#italiano)
 
-<img src="docs/areas.png" width="49%" alt="Areas"> <img src="docs/wallpapers.png" width="49%" alt="Wallpapers, light theme">
-<img src="docs/appearance.png" width="49%" alt="Appearance"> <img src="docs/keyboard.png" width="49%" alt="Keyboard">
+<img src="docs/cover.jpg" width="100%" alt="Orrery: GIPHY stickers, areas, Caelestia's lock screen as login, GIF previews">
+
+<img src="docs/gif-search.jpg" width="49%" alt="Searching GIPHY stickers without background"> <img src="docs/areas.jpg" width="49%" alt="Areas: hidden workspaces with their apps">
+<img src="docs/lock.jpg" width="49%" alt="Caelestia's lock screen as the login screen"> <img src="docs/power.jpg" width="49%" alt="Power and low battery warnings">
+
+<sub>Pictures from the <a href="#channels">beta channel</a>: GIFs, the Bar page and the low battery warnings are in the beta for now.</sub>
 
 </div>
 
