@@ -44,7 +44,7 @@ ShellRoot {
                 const ctrl = e.modifiers & Qt.ControlModifier, shift = e.modifiers & Qt.ShiftModifier, alt = e.modifiers & Qt.AltModifier;
                 if (e.key === Qt.Key_F1) { help.open = !help.open; return true; }
                 if (help.open) { if (e.key === Qt.Key_Escape) help.open = false; return true; }
-                if (picker.open) return false;
+                if (picker.open || gifPicker.open) return false;
                 if (ctrl && e.key >= Qt.Key_0 && e.key <= Qt.Key_9) { Ui.go(e.key === Qt.Key_0 ? 9 : e.key - Qt.Key_1); return Nav.toMenu(); }
                 if (ctrl && (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab || e.key === Qt.Key_PageDown || e.key === Qt.Key_PageUp)) {
                     const back = e.key === Qt.Key_Backtab || e.key === Qt.Key_PageUp || (e.key === Qt.Key_Tab && shift);
@@ -458,6 +458,7 @@ ShellRoot {
 
             Help { id: help }
             Picker { id: picker; Component.onCompleted: Ui.picker = picker }
+            GifPicker { id: gifPicker; Component.onCompleted: Ui.gifPicker = gifPicker }
         }
     }
 }

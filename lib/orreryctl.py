@@ -460,6 +460,11 @@ WARN_LEVELS = [
      "critical": True}]
 BATTERY = {"warnLevels": WARN_LEVELS, "criticalLevel": 3}
 OSD = {"enabled": True, "hideDelay": 2000, "enableBrightness": True, "enableMicrophone": False}
+# The pictures Caelestia shows: path in shell.json, default. The notification ones are still images, drawn as a silhouette.
+GIFS = {"media": ("paths.mediaGif", "root:/assets/bongocat.gif"), "session": ("paths.sessionGif", "root:/assets/kurukuru.gif"),
+        "notifs": ("paths.noNotifsPic", "root:/assets/dino.png"), "lock": ("paths.lockNoNotifsPic", "root:/assets/dino.png")}
+SPEEDS = {"mediaSpeed": ("general.mediaGifSpeedAdjustment", 300, 30, 3000), "sessionSpeed": ("general.sessionGifSpeed", 0.7, 0.1, 5)}
+IMG_EXT = (".gif", ".webp", ".png", ".jpg", ".jpeg", ".svg")
 BAR_IDS = ("logo", "workspaces", "spacer", "activeWindow", "tray", "clock", "statusIcons", "power")
 BAR_ENTRIES = [{"id": i, "enabled": True} for i in
                ("logo", "workspaces", "spacer", "activeWindow", "spacer", "tray", "clock", "statusIcons", "power")]
@@ -510,7 +515,9 @@ def read_shell(d=None):
            "osd": {k: pick(f"osd.{k}", v, lambda x, v=v: type(x) is type(v)) for k, v in OSD.items()},
            "bar": {"entries": pick("bar.entries", BAR_ENTRIES,
                                    lambda v: isinstance(v, list) and all(isinstance(x, dict) and isinstance(x.get("id"), str) for x in v)),
-                   "excludedScreens": pick("bar.excludedScreens", [], lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v))}}
+                   "excludedScreens": pick("bar.excludedScreens", [], lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v))},
+           "gifs": {**{k: pick(path, v, lambda x: isinstance(x, str) and x != "") for k, (path, v) in GIFS.items()},
+                    **{k: pick(path, v, lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)) for k, (path, v, *_) in SPEEDS.items()}}}
     return out
 
 
@@ -577,6 +584,21 @@ def check_shell(s, old):
         if len(screens) > 30:
             raise Bad("bar: too many screens")
         out["bar"] = {"entries": entries, "excludedScreens": screens}
+    g = s.get("gifs") or {}
+    if g == old["gifs"]:
+        out["gifs"] = old["gifs"]
+    else:
+        out["gifs"] = {}
+        for k, (_, default) in GIFS.items():
+            v = g.get(k, default)
+            if v != default:
+                v = line(v, "picture", 1024, empty=False)
+                f = Path(v)
+                if not f.is_absolute() or f.suffix.lower() not in IMG_EXT or not f.is_file():
+                    raise Bad(f"picture: {v} is not an image file")
+            out["gifs"][k] = v
+        for k, (_, default, lo, hi) in SPEEDS.items():
+            out["gifs"][k] = round(float(number(g.get(k, default), lo, hi, "animation speed")), 3)
     return out
 
 
@@ -592,6 +614,8 @@ def shell_changes(old, new):
         put(f"osd.{k}", new["osd"][k], old["osd"][k], v)
     put("bar.entries", new["bar"]["entries"], old["bar"]["entries"], BAR_ENTRIES)
     put("bar.excludedScreens", new["bar"]["excludedScreens"], old["bar"]["excludedScreens"], [])
+    for k, (path, default, *_) in {**GIFS, **SPEEDS}.items():
+        put(path, new["gifs"][k], old["gifs"][k], default)
     return out
 
 
@@ -603,6 +627,246 @@ def put_shell(changes):
     for path, v in changes.items():
         set_path(d, path, v)
     write(CAEL / "shell.json", json.dumps(d, indent=4, ensure_ascii=False) + "\n")
+
+
+# --- pictures and GIPHY ---------------------------------------------------------------
+GIF_DIR = DATA_DIRS[0] / "orrery/gifs"
+GIPHY_KEY = OWN / "giphy.json"
+GIPHY = "https://api.giphy.com/v1"
+MAX_PIC = 25 * 1024 * 1024
+
+
+def shell_dir():
+    for d in (CONF / "quickshell/caelestia", Path("/etc/xdg/quickshell/caelestia")):
+        if (d / "shell.qml").exists():
+            return d
+    return None
+
+
+def resolve_pic(p):
+    """root:/assets/x is inside Caelestia; ~ and $HOME work as in Caelestia."""
+    if p.startswith("root:/"):
+        d = shell_dir()
+        return str(d / p[6:]) if d else ""
+    return re.sub(r"^(~|\$HOME|\$\{HOME\})(?=/|$)", str(HOME), p)
+
+
+def alpha_info(src):
+    """Is the background see-through? Looks at the edges of the first frame and of one in the middle:
+    at least half of the border must be clear. None when Pillow is missing or the image cannot be read."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    import io
+    try:
+        im = Image.open(io.BytesIO(src) if isinstance(src, bytes) else src)
+        frames = getattr(im, "n_frames", 1)
+        size, clear = im.size, 1.0
+        for n in sorted({0, frames // 2}):
+            im.seek(n)
+            a = im.convert("RGBA").getchannel("A")
+            w, h = a.size
+            edge = [a.getpixel((x, y)) for x in range(0, w, max(1, w // 64)) for y in (0, h - 1)]
+            edge += [a.getpixel((x, y)) for y in range(0, h, max(1, h // 64)) for x in (0, w - 1)]
+            clear = min(clear, sum(v < 32 for v in edge) / len(edge))
+        return {"transparent": clear >= 0.5, "frames": frames, "width": size[0], "height": size[1], "format": im.format}
+    except Exception:
+        return None
+
+
+def pic_info(opts):
+    p = resolve_pic(line(opts.get("path", ""), "picture", 1024, empty=False))
+    if not p or not Path(p).is_file():
+        raise Bad("picture not found")
+    if p.lower().endswith(".svg"):
+        return {"ok": True, "path": p, "info": {"transparent": True, "frames": 1}}
+    return {"ok": True, "path": p, "info": alpha_info(p)}
+
+
+def originals():
+    """Copies of Caelestia's own pictures, kept by Orrery: an update or a broken install cannot take them away."""
+    return {k: GIF_DIR / "caelestia" / Path(v).name for k, (_, v) in GIFS.items()}
+
+
+def back_up_originals():
+    done = []
+    for k, target in originals().items():
+        src = Path(resolve_pic(GIFS[k][1]))
+        if not src.is_file():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + ".orrery-tmp")
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, target)
+        done.append(k)
+    if not done:
+        raise Bad("Caelestia's pictures were not found")
+    return {"ok": True, "saved": done}
+
+
+def pic_files(opts):
+    """Pictures in the usual folders, newest first."""
+    q = str(opts.get("query", "")).lower()[:80]
+    roots = [GIF_DIR, pictures_dir(), HOME / "Downloads", Path(run("xdg-user-dir", "DOWNLOAD").stdout.strip() or HOME / "Downloads")]
+    seen, out = set(), []
+    for r in roots:
+        if not r.is_dir() or r in seen:
+            continue
+        seen.add(r)
+        for top, dirs, files in os.walk(r):
+            depth = len(Path(top).relative_to(r).parts)
+            dirs[:] = [] if depth >= 3 else [d for d in dirs if not d.startswith(".")]
+            for name in files:
+                f = Path(top) / name
+                if name.startswith(".") or f.suffix.lower() not in IMG_EXT or (q and q not in name.lower()):
+                    continue
+                try:
+                    st = f.stat()
+                except OSError:
+                    continue
+                if st.st_size <= MAX_PIC and f.is_file():
+                    out.append({"path": str(f), "name": name, "time": st.st_mtime, "size": st.st_size, "own": r == GIF_DIR})
+    out.sort(key=lambda x: -x["time"])
+    return {"ok": True, "files": out[:200]}
+
+
+def keep(data, name):
+    """Copies a picture into Orrery's folder, so moving the original does not break Caelestia."""
+    GIF_DIR.mkdir(parents=True, exist_ok=True)
+    target = GIF_DIR / name
+    if not target.exists():
+        tmp = target.with_name(target.name + ".orrery-tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, target)
+    return str(target)
+
+
+def pic_import(opts):
+    f = Path(line(opts.get("path", ""), "picture", 1024, empty=False))
+    if not f.is_absolute() or f.suffix.lower() not in IMG_EXT or not f.is_file():
+        raise Bad("choose an image file")
+    if f.stat().st_size > MAX_PIC:
+        raise Bad("the file is too big (25 MB at most)")
+    data = f.read_bytes()
+    info = {"transparent": True, "frames": 1} if f.suffix.lower() == ".svg" else alpha_info(data)
+    if info is None and f.suffix.lower() != ".svg":
+        raise Bad("this image cannot be read")
+    import hashlib
+    path = str(f) if GIF_DIR in f.parents else keep(data, hashlib.sha256(data).hexdigest()[:16] + f.suffix.lower())
+    return {"ok": True, "path": path, "info": info}
+
+
+def giphy_key():
+    try:
+        k = json.loads(GIPHY_KEY.read_text()).get("key", "")
+        return k if isinstance(k, str) else ""
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def fetch(url, limit=MAX_PIC):
+    import urllib.error, urllib.request
+    if DRY and os.environ.get("ORRERY_NET") != "1":
+        raise Bad("no network in test mode")
+    req = urllib.request.Request(url, headers={"User-Agent": "Orrery"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = r.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise Bad("GIPHY did not accept the key")
+        if e.code == 429:
+            raise Bad("GIPHY: too many searches this hour with this key, try again later")
+        raise Bad(f"GIPHY answered {e.code}")
+    except (urllib.error.URLError, OSError) as e:
+        raise Bad("GIPHY cannot be reached: check the connection")
+    if len(data) > limit:
+        raise Bad("the file is too big")
+    return data
+
+
+def giphy(path, **params):
+    import urllib.parse
+    key = params.pop("key", None) or giphy_key()
+    if not key:
+        raise Bad("add your GIPHY key first")
+    r = json.loads(fetch(f"{GIPHY}/{path}?" + urllib.parse.urlencode({"api_key": key, **params}), 4 * 1024 * 1024))
+    meta = r.get("meta") or {}
+    if meta.get("status") != 200 or not meta.get("response_id"):
+        raise Bad("GIPHY: " + str(meta.get("msg") or "no answer"))
+    return r
+
+
+def media_url(u):
+    import urllib.parse
+    h = urllib.parse.urlparse(u or "")
+    return u if h.scheme == "https" and (h.hostname or "").endswith(".giphy.com") else ""
+
+
+def set_giphy_key(opts):
+    key = str(opts.get("key", "")).strip()
+    if not key:
+        GIPHY_KEY.unlink(missing_ok=True)
+        return {"ok": True}
+    if not re.fullmatch(r"[A-Za-z0-9]{16,64}", key):
+        raise Bad("this does not look like a GIPHY key: copy the whole API Key from the dashboard")
+    giphy("stickers/trending", key=key, limit=1)      # randomid answers OK even to a made-up key
+    OWN.mkdir(parents=True, exist_ok=True)
+    fd = os.open(GIPHY_KEY, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"key": key}, f)
+    os.chmod(GIPHY_KEY, 0o600)
+    return {"ok": True}
+
+
+def giphy_search(opts):
+    """Stickers in GIPHY's order. Each one is checked: those with a background are marked and cannot be used."""
+    from concurrent.futures import ThreadPoolExecutor
+    q = line(str(opts.get("query", "")), "search", 50).strip()
+    offset = int(number(opts.get("offset", 0), 0, 4999, "page"))
+    lang = (os.environ.get("LANG") or "en")[:2].lower()
+    params = {"limit": 24, "offset": offset, "rating": "pg"}
+    r = giphy("stickers/search", q=q, lang=lang, **params) if q else giphy("stickers/trending", **params)
+    items = []
+    for g in r.get("data") or []:
+        im = g.get("images") or {}
+        fw, small = im.get("fixed_width") or {}, im.get("fixed_width_small") or {}
+        preview = media_url(fw.get("webp")) or media_url(fw.get("url"))
+        if g.get("id") and preview:
+            items.append({"id": str(g["id"])[:64], "title": str(g.get("title") or "")[:120], "preview": preview,
+                          "check": media_url(small.get("webp")) or media_url(small.get("url")) or preview,
+                          "width": int(fw.get("width") or 200), "height": int(fw.get("height") or 200)})
+    def look(it):
+        try:
+            info = alpha_info(fetch(it.pop("check"), 4 * 1024 * 1024))
+        except Bad:
+            info = None
+        it["transparent"] = info["transparent"] if info else None
+        return it
+    with ThreadPoolExecutor(8) as ex:
+        items = list(ex.map(look, items))
+    page = r.get("pagination") or {}
+    return {"ok": True, "results": items, "next": offset + int(page.get("count") or len(items)),
+            "total": int(page.get("total_count") or 0)}
+
+
+def giphy_save(opts):
+    gid = str(opts.get("id", ""))
+    if not re.fullmatch(r"[A-Za-z0-9]{1,64}", gid):
+        raise Bad("unknown sticker")
+    im = ((giphy(f"gifs/{gid}").get("data") or {}).get("images") or {})
+    o = im.get("original") or {}
+    url, ext = (media_url(o.get("webp")), ".webp") if media_url(o.get("webp")) else (media_url(o.get("url")), ".gif")
+    if not url:
+        raise Bad("GIPHY has no file for this sticker")
+    data = fetch(url)
+    info = alpha_info(data)
+    if not info:
+        raise Bad("this sticker cannot be read")
+    if not info["transparent"]:
+        raise Bad("this sticker has a background: choose another one")
+    return {"ok": True, "path": keep(data, f"giphy-{gid}{ext}"), "info": info}
 
 
 def monitors():
@@ -929,6 +1193,9 @@ def state():
         "walls": walls,
         "power": {"defaults": read_power({}), "hibernate": can_hibernate(), "battery": has_battery()},
         "shell": {"defaults": read_shell({}), "monitors": monitors()},
+        "pics": {"defaults": {k: resolve_pic(v) for k, (_, v) in GIFS.items()}, "dir": str(GIF_DIR), "giphy": bool(giphy_key()),
+                 "defaultsOk": {k: Path(resolve_pic(v) or "/nonexistent").is_file() for k, (_, v) in GIFS.items()},
+                 "originals": {k: str(p) if p.is_file() else "" for k, p in originals().items()}},
         "canUndo": BACKUPS.is_dir() and any(BACKUPS.iterdir()),
         "system": {
             "helper": os.path.exists(helper), "caelestia": (CONF / "hypr/hyprland.lua").exists(),
@@ -959,7 +1226,10 @@ def check():
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "state"
     try:
-        takes = {"apply": apply, "prefs": prefs, "wallpapers": wallpapers, "use-wallpaper": use_wallpaper}
+        takes = {"apply": apply, "prefs": prefs, "wallpapers": wallpapers, "use-wallpaper": use_wallpaper,
+                 "pic-info": pic_info, "pic-files": pic_files, "pic-import": pic_import,
+                 "giphy-key": set_giphy_key, "giphy-search": giphy_search, "giphy-save": giphy_save}
+        takes["pic-originals"] = lambda _: back_up_originals()
         if cmd in takes:
             res = takes[cmd](json.load(sys.stdin))
         else:

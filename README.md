@@ -29,7 +29,7 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 | **Areas** | Every hidden workspace (`Super+S`, `D`, `M`, `R`, `Ctrl+Shift+Esc`, and your own): shortcut, apps, several workspaces per area, arrow navigation, side by side, animations. Areas you leave off keep Caelestia's behaviour. |
 | **Keyboard** | Up to four layouts with variants, a shortcut to switch, Num Lock at startup, key repeat. |
 | **Default apps** | Browser, terminal, editor, files, media, mail. Links, files *and* Caelestia's own shortcuts. |
-| **Wallpapers** | Creates the folder, points Caelestia at it and makes it show up **without a restart**. Two wallpapers included, light and dark. |
+| **Wallpapers** | Creates the folder, points Caelestia at it and makes it show up **without a restart**. Two wallpapers included, light and dark. GIFs for media and the shut down menu, from your files or GIPHY (with your own free key), always without background. |
 | **Startup** | Keyboard backlight at boot. |
 | **Login** | Caelestia's lock screen as your greetd login, following your colours and wallpaper. *Experimental.* |
 | **Appearance** | Follows Caelestia's palette live, plus transparency, motion, rounding and language. |
@@ -74,7 +74,7 @@ git clone https://github.com/Violet-owo/orrery && orrery/bin/orrery
 
 | Dependency | For |
 |---|---|
-| `caelestia-shell`, `quickshell-git`, `hyprland`, `python`, `polkit`, `xdg-utils`, `xdg-user-dirs` | everything |
+| `caelestia-shell`, `quickshell-git`, `hyprland`, `python`, `python-pillow`, `polkit`, `xdg-utils`, `xdg-user-dirs` | everything |
 | `greetd`, `cage`, `quickshell-greetd` | login (optional) |
 
 > [!WARNING]

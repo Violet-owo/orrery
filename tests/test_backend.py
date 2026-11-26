@@ -263,6 +263,87 @@ class T(unittest.TestCase):
         self.assertTrue(self.ctl("apply", self.cfg(shell=None))["ok"])
         self.assertEqual(sj.read_text(), "{broken")
 
+    def picture(self, name, clear):
+        from PIL import Image
+        im = Image.new("RGBA", (40, 30), (0, 0, 0, 0) if clear else (255, 255, 255, 255))
+        im.paste((200, 50, 50, 255), (10, 8, 30, 22))
+        f = self.t / name
+        im.save(f)
+        return f
+
+    def test_pictures(self):
+        clear, solid = self.picture("cat.gif", True), self.picture("box.png", False)
+        r = self.ctl("pic-import", {"path": str(clear)})
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(r["info"]["transparent"])
+        kept = Path(r["path"])
+        self.assertEqual((kept.parent, kept.read_bytes()), (self.t / "data/orrery/gifs", clear.read_bytes()))
+        self.assertEqual(self.ctl("pic-import", {"path": str(kept)})["path"], str(kept))     # already Orrery's: not copied again
+        self.assertFalse(self.ctl("pic-import", {"path": str(solid)})["info"]["transparent"])
+        for bad in (str(self.t / "nope.gif"), str(self.t / "caelestia/hypr-user.lua"), "relative.gif"):
+            self.assertFalse(self.ctl("pic-import", {"path": bad}).get("ok", True), bad)
+        def gifs(g):
+            g["media"] = str(kept)
+            g["mediaSpeed"] = 150
+        r, d = self.shell({"paths": {"wallpaperDir": "/x"}}, gifs=gifs)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(d["paths"], {"wallpaperDir": "/x", "mediaGif": str(kept)})
+        self.assertEqual(d["general"], {"mediaGifSpeedAdjustment": 150.0})
+        dflt = self.ctl("state")["shell"]["defaults"]["gifs"]
+        r, d = self.shell(None, gifs=lambda g: g.update(dflt))
+        self.assertEqual(d, {"paths": {"wallpaperDir": "/x"}})
+        for bad in (dict(media=str(self.t / "caelestia/hypr-user.lua")), dict(media="relative.gif"), dict(sessionSpeed=0), dict(mediaSpeed=True)):
+            r, d = self.shell(None, gifs=lambda g: g.update(bad))
+            self.assertFalse(r.get("ok", True), bad)
+        self.assertIn("files", self.ctl("pic-files", {}))
+        if Path("/etc/xdg/quickshell/caelestia/assets/bongocat.gif").exists():
+            self.assertTrue(self.ctl("pic-originals", {})["ok"])
+            o = self.ctl("state")["pics"]["originals"]
+            self.assertEqual(Path(o["media"]).read_bytes(), Path("/etc/xdg/quickshell/caelestia/assets/bongocat.gif").read_bytes())
+            self.assertTrue(o["media"].startswith(str(self.t / "data/orrery/gifs/caelestia/")))
+
+    def test_giphy_offline(self):
+        self.assertFalse(self.ctl("giphy-search", {"query": "cat"}).get("ok", True))       # no key
+        self.assertFalse(self.ctl("giphy-key", {"key": "not a key!"}).get("ok", True))
+        self.assertFalse(self.ctl("giphy-save", {"id": "../x"}).get("ok", True))
+        self.assertTrue(self.ctl("giphy-key", {"key": ""})["ok"])                         # removing works offline
+        self.assertFalse(self.ctl("state")["pics"]["giphy"])
+
+    def test_giphy_flow(self):
+        """GIPHY's answers are faked: order is kept, a sticker with a background is marked and cannot be saved."""
+        import importlib.util, io
+        from PIL import Image
+        os.environ.update({k: v for k, v in self.env.items() if k.startswith("XDG_")})
+        spec = importlib.util.spec_from_file_location("octl", CTL)
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        def pic(clear):
+            b = io.BytesIO()
+            Image.new("RGBA", (20, 20), (0, 0, 0, 0) if clear else (9, 9, 9, 255)).save(b, "GIF")
+            return b.getvalue()
+        img = lambda i: {"fixed_width": {"url": f"https://media.giphy.com/{i}/w.gif", "width": "200", "height": "150"},
+                         "fixed_width_small": {"url": f"https://media.giphy.com/{i}/s.gif"},
+                         "original": {"url": f"https://media.giphy.com/{i}/o.gif"}}
+        api = {"stickers/search": {"data": [{"id": "aaa", "title": "cat", "images": img("aaa")}, {"id": "bbb", "images": img("bbb")},
+                                            {"id": "ccc", "images": {"fixed_width": {"url": "http://evil.example/x.gif"}}}],
+                                   "pagination": {"count": 3, "total_count": 50}, "meta": {"status": 200, "response_id": "r"}},
+               "gifs/aaa": {"data": {"images": img("aaa")}, "meta": {"status": 200, "response_id": "r"}},
+               "gifs/bbb": {"data": {"images": img("bbb")}, "meta": {"status": 200, "response_id": "r"}}}
+        calls = []
+        def fetch(url, limit=0):
+            calls.append(url)
+            if url.startswith(m.GIPHY):
+                return json.dumps(api[url[len(m.GIPHY) + 1:].split("?")[0]]).encode()
+            return pic("/aaa/" in url)
+        m.fetch, m.giphy_key = fetch, lambda: "k" * 32
+        r = m.giphy_search({"query": "cat"})
+        self.assertEqual([(x["id"], x["transparent"]) for x in r["results"]], [("aaa", True), ("bbb", False)])   # no foreign URLs
+        self.assertEqual((r["next"], r["total"]), (3, 50))
+        self.assertTrue(any("q=cat" in c and "api_key=" in c for c in calls))
+        saved = m.giphy_save({"id": "aaa"})
+        self.assertTrue(Path(saved["path"]).is_file() and saved["path"].endswith("giphy-aaa.gif"))
+        with self.assertRaises(m.Bad):
+            m.giphy_save({"id": "bbb"})
+
     def test_prefs(self):
         self.assertTrue(self.ctl("prefs", {"transparent": False, "junk": 1})["ok"])
         self.assertTrue(self.ctl("prefs", {"base": 0.5, "language": "it"})["ok"])

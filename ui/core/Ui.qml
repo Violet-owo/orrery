@@ -8,7 +8,7 @@ Singleton {
     // ORRERY_PAGE / ORRERY_AREA open the app on a given page
     readonly property var nav: [
         { icon: "palette", name: "Appearance", sub: "Transparency, motion, language", group: 0 },
-        { icon: "wallpaper", name: "Wallpapers", sub: "Folder, light and dark", group: 0 },
+        { icon: "wallpaper", name: "Wallpapers", sub: "Folder, light and dark, GIFs", group: 0 },
         { icon: "toolbar", name: "Bar", sub: "Blocks, screens, indicators", group: 0 },
         { icon: "apps", name: "Default apps", sub: "Links, files, shortcuts", group: 1 },
         { icon: "keyboard", name: "Keyboard", sub: "Layouts, Num Lock", group: 1 },
@@ -21,7 +21,7 @@ Singleton {
     // What the search knows: [page, English label]
     readonly property var index: [
         [0, "Follow Caelestia"], [0, "Transparency"], [0, "Background opacity"], [0, "Layer opacity"], [0, "Animation duration"], [0, "Rounding"], [0, "Language"],
-        [1, "Set up the wallpapers"], [1, "Folder to use"],
+        [1, "Set up the wallpapers"], [1, "Folder to use"], [1, "GIFs and pictures"], [1, "Media speed"], [1, "Shut down menu speed"], [1, "GIPHY"], [1, "Caelestia's originals"],
         [2, "Blocks, from the top"], [2, "Add a space"], [2, "Screens"], [2, "Show the indicators"], [2, "Brightness"], [2, "Microphone"], [2, "Stays on screen for"],
         [3, "Web browser"], [3, "Terminal"], [3, "Text editor"], [3, "File manager"], [3, "Images"], [3, "Video"], [3, "Music"], [3, "PDF"], [3, "Mail"],
         [4, "Manage the keyboard with Orrery"], [4, "Add a layout"], [4, "Switch layout"], [4, "Num Lock at startup"], [4, "Repeat rate"], [4, "Repeat delay"],
@@ -41,6 +41,7 @@ Singleton {
     function openUrl(url: string): void { Quickshell.execDetached(["xdg-open", url]); }
 
     property var picker: null
+    property var gifPicker: null
     property bool down: true // direction of the last page change
     function go(i: int): void {
         down = i >= page; // first, so the menu pill knows which edge leads
