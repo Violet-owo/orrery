@@ -9,6 +9,7 @@ Singleton {
     readonly property var nav: [
         { icon: "palette", name: "Appearance", sub: "Transparency, motion, language", group: 0 },
         { icon: "wallpaper", name: "Wallpapers", sub: "Folder, light and dark", group: 0 },
+        { icon: "toolbar", name: "Bar", sub: "Blocks, screens, indicators", group: 0 },
         { icon: "apps", name: "Default apps", sub: "Links, files, shortcuts", group: 1 },
         { icon: "keyboard", name: "Keyboard", sub: "Layouts, Num Lock", group: 1 },
         { icon: "dashboard", name: "Areas", sub: "Super+S, D, M and yours", group: 1 },
@@ -20,12 +21,14 @@ Singleton {
     // What the search knows: [page, English label]
     readonly property var index: [
         [0, "Follow Caelestia"], [0, "Transparency"], [0, "Background opacity"], [0, "Layer opacity"], [0, "Animation duration"], [0, "Rounding"], [0, "Language"],
-        [1, "Set up the wallpapers"], [1, "Folder to use"], [2, "Web browser"], [2, "Terminal"], [2, "Text editor"], [2, "File manager"], [2, "Images"], [2, "Video"], [2, "Music"], [2, "PDF"], [2, "Mail"],
-        [3, "Manage the keyboard with Orrery"], [3, "Add a layout"], [3, "Switch layout"], [3, "Num Lock at startup"], [3, "Repeat rate"], [3, "Repeat delay"],
-        [4, "Customise this area"], [4, "Shortcut"], [4, "Add an app"], [4, "Move between workspaces with the arrows"], [4, "Wrap around"], [4, "Bring apps back"], [4, "Opening"], [4, "Changing workspace"],
-        [5, "Turn on at startup"], [5, "Level"], [6, "Required packages"], [6, "Scale"], [6, "Numeric keypad always types digits"],
-        [7, "Lock"], [7, "Turn the screen off"], [7, "Suspend"], [7, "Suspend on battery"], [7, "Suspend while charging"], [7, "Lock before suspending"], [7, "Stay awake while something plays"], [7, "Stay awake while charging"], [7, "Hibernate after a while asleep"], [7, "Caelestia's defaults"],
-        [8, "Developed by"], [8, "Source code"], [8, "Undo the last apply"], [8, "Turn Orrery off"]]
+        [1, "Set up the wallpapers"], [1, "Folder to use"],
+        [2, "Blocks, from the top"], [2, "Add a space"], [2, "Screens"], [2, "Show the indicators"], [2, "Brightness"], [2, "Microphone"], [2, "Stays on screen for"],
+        [3, "Web browser"], [3, "Terminal"], [3, "Text editor"], [3, "File manager"], [3, "Images"], [3, "Video"], [3, "Music"], [3, "PDF"], [3, "Mail"],
+        [4, "Manage the keyboard with Orrery"], [4, "Add a layout"], [4, "Switch layout"], [4, "Num Lock at startup"], [4, "Repeat rate"], [4, "Repeat delay"],
+        [5, "Customise this area"], [5, "Shortcut"], [5, "Add an app"], [5, "Move between workspaces with the arrows"], [5, "Wrap around"], [5, "Bring apps back"], [5, "Opening"], [5, "Changing workspace"],
+        [6, "Turn on at startup"], [6, "Level"], [7, "Required packages"], [7, "Scale"], [7, "Numeric keypad always types digits"],
+        [8, "Lock"], [8, "Turn the screen off"], [8, "Suspend"], [8, "Suspend on battery"], [8, "Suspend while charging"], [8, "Lock before suspending"], [8, "Stay awake while something plays"], [8, "Stay awake while charging"], [8, "Hibernate after a while asleep"], [8, "Caelestia's defaults"], [8, "Low battery"], [8, "Add a warning"], [8, "Hibernate when the battery is almost empty"],
+        [9, "Developed by"], [9, "Source code"], [9, "Undo the last apply"], [9, "Turn Orrery off"]]
     property string target: "" // label to highlight after a search
 
     property int page: parseInt(Quickshell.env("ORRERY_PAGE") || "0")

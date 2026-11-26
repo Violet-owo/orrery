@@ -22,6 +22,17 @@ Page {
             .map(s => ({ value: s, label: time(s) })).concat([{ value: 0, label: I18n.tr("Never") }]);
     }
     function set(k: string, v: var): void { Backend.mutate(c => c.power[k] = v); }
+    readonly property var bat: Backend.cfg.shell?.battery ?? null
+    function percent(now: int, steps: var): var {
+        const l = steps ?? [5, 10, 15, 20, 25, 30, 40, 50];
+        return (l.includes(now) || now < 1 ? l : l.concat([now]).sort((a, b) => a - b)).map(v => ({ value: v, label: `${v}%` }));
+    }
+    // A new warning uses Caelestia's own texts, so they come translated
+    function addWarning(): void {
+        const used = bat.warnLevels.map(w => w.level), level = [15, 25, 30, 40, 50, 20, 10, 5].find(v => !used.includes(v)) ?? 30;
+        Ui.markAdded(`warn-${bat.warnLevels.length}`);
+        Backend.mutate(c => c.shell.battery.warnLevels.push({ level, title: "Low battery", message: "You might want to plug in a charger", icon: "battery_android_frame_2" }));
+    }
     // Caelestia cannot say "only while charging": the time on battery is never the longer one
     function setBattery(v: int): void {
         Backend.mutate(c => {
@@ -97,6 +108,51 @@ Page {
                 text: I18n.tr("The computer would suspend unlocked: anyone waking it can use it.")
             }
 
+            Head { visible: page.laptop && !!page.bat; text: I18n.tr("Low battery") }
+            Repeater {
+                id: warns
+                model: page.laptop && page.bat ? page.bat.warnLevels.length : 0
+                SelectTile {
+                    id: warn
+                    required property int index
+                    readonly property var w: page.bat.warnLevels[index]
+                    first: index === 0
+                    growKey: `warn-${index}`
+                    icon: w?.icon || "battery_alert"
+                    label: I18n.tr("Warning at")
+                    sub: w?.critical ? I18n.tr("Shown as urgent") : ""
+                    items: page.percent(w?.level ?? 20)
+                    current: w?.level
+                    onPicked: v => Backend.mutate(c => c.shell.battery.warnLevels[warn.index].level = v)
+                    onDelete: () => warn.leave(() => Backend.mutate(c => c.shell.battery.warnLevels.splice(warn.index, 1)))
+                    Btn { icon: "close"; kind: "text"; onClicked: warn.leave(() => Backend.mutate(c => c.shell.battery.warnLevels.splice(warn.index, 1))) }
+                }
+            }
+            Tile {
+                visible: page.laptop && !!page.bat && warns.count < 8
+                first: warns.count === 0
+                icon: "add_alert"
+                label: I18n.tr("Add a warning")
+                clickable: true
+                onClicked: page.addWarning()
+            }
+            SelectTile {
+                visible: page.laptop && !!page.bat
+                last: true
+                icon: "battery_android_alert"
+                label: I18n.tr("Hibernate when the battery is almost empty")
+                sub: I18n.tr("Caelestia warns you, then hibernates 5 seconds later")
+                items: page.percent(page.bat?.criticalLevel ?? 3, [2, 3, 5, 8, 10]).concat([{ value: -1, label: I18n.tr("Never") }])
+                current: page.bat?.criticalLevel
+                onPicked: v => Backend.mutate(c => c.shell.battery.criticalLevel = v)
+            }
+            Note {
+                visible: page.laptop && !!page.bat && page.bat.criticalLevel > 0 && !page.info.hibernate
+                warn: true
+                icon: "battery_alert"
+                text: I18n.tr("This computer cannot hibernate: at that level Caelestia's attempt fails and it keeps running until the battery is empty. Set up hibernation, or plug in when warned.")
+            }
+
             Head { text: I18n.tr("Behaviour") }
             ToggleTile {
                 first: true
@@ -133,7 +189,11 @@ Page {
                 icon: "restart_alt"
                 label: I18n.tr("Caelestia's defaults")
                 sub: I18n.tr("Puts these options back; your own rows in shell.json stay")
-                Btn { text: I18n.tr("Restore"); enabled: !Backend.busy; onClicked: Backend.mutate(c => c.power = JSON.parse(JSON.stringify(page.info.defaults))) }
+                Btn { text: I18n.tr("Restore"); enabled: !Backend.busy; onClicked: Backend.mutate(c => {
+                    c.power = JSON.parse(JSON.stringify(page.info.defaults));
+                    if (c.shell)
+                        c.shell.battery = JSON.parse(JSON.stringify(Backend.st.shell.defaults.battery));
+                }) }
             }
             Note {
                 text: I18n.tr("Apps that ask to stay awake are respected, and so is Keep awake in Caelestia's utilities. The lid and the power button are handled by the system.")

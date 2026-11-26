@@ -45,7 +45,7 @@ ShellRoot {
                 if (e.key === Qt.Key_F1) { help.open = !help.open; return true; }
                 if (help.open) { if (e.key === Qt.Key_Escape) help.open = false; return true; }
                 if (picker.open) return false;
-                if (ctrl && e.key >= Qt.Key_1 && e.key <= Qt.Key_9) { Ui.go(e.key - Qt.Key_1); return Nav.toMenu(); }
+                if (ctrl && e.key >= Qt.Key_0 && e.key <= Qt.Key_9) { Ui.go(e.key === Qt.Key_0 ? 9 : e.key - Qt.Key_1); return Nav.toMenu(); }
                 if (ctrl && (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab || e.key === Qt.Key_PageDown || e.key === Qt.Key_PageUp)) {
                     const back = e.key === Qt.Key_Backtab || e.key === Qt.Key_PageUp || (e.key === Qt.Key_Tab && shift);
                     Ui.go((Ui.page + (back ? bg.nav.length - 1 : 1)) % bg.nav.length);
@@ -57,7 +57,7 @@ ShellRoot {
                 if (ctrl && e.key === Qt.Key_Y) { Backend.stepForward(); return true; }
                 if (ctrl && (e.key === Qt.Key_Q || e.key === Qt.Key_W)) { commit(); quit(); return true; }
                 if (ctrl) return false;
-                if (alt && Ui.page === 4 && Backend.ready && (e.key === Qt.Key_Left || e.key === Qt.Key_Right)) {
+                if (alt && Ui.page === 5 && Backend.ready && (e.key === Qt.Key_Left || e.key === Qt.Key_Right)) {
                     const n = Backend.cfg.areas.length;
                     if (n) Ui.area = (Math.min(Ui.area, n - 1) + (e.key === Qt.Key_Right ? 1 : n - 1)) % n;
                     return true;
@@ -280,7 +280,7 @@ ShellRoot {
                 anchors { fill: parent; leftMargin: bg.navWidth + 40; topMargin: 10; rightMargin: 12; bottomMargin: 10 }
                 clip: true
 
-                readonly property var pages: [appearance, wallpapers, apps, keyboard, areas, startup, login, power, health]
+                readonly property var pages: [appearance, wallpapers, barPage, apps, keyboard, areas, startup, login, power, health]
                 property int shown: -1
                 property int dir: 1
 
@@ -350,6 +350,7 @@ ShellRoot {
                 }
                 Component { id: appearance; AppearancePage {} }
                 Component { id: wallpapers; WallpapersPage {} }
+                Component { id: barPage; BarPage {} }
                 Component { id: apps; AppsPage {} }
                 Component { id: keyboard; KeyboardPage {} }
                 Component { id: areas; AreasPage {} }

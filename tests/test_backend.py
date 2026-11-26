@@ -1,4 +1,4 @@
-import json, os, shutil, subprocess, sys, tempfile, unittest
+import copy, json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CTL = ROOT / "lib/orreryctl.py"
@@ -189,6 +189,79 @@ class T(unittest.TestCase):
             self.assertTrue(self.ctl("apply", self.cfg(power=None))["ok"])    # the rest still works
             self.assertFalse(self.ctl("apply", self.cfg(power=self.ctl("state")["power"]["defaults"])).get("ok", True))
             self.assertEqual(sj.read_text(), broken)
+
+    def shell(self, base=None, **sections):
+        sj = self.t / "caelestia/shell.json"
+        if base is not None:
+            sj.write_text(json.dumps(base))
+        cur = self.ctl("state")["config"]["shell"]
+        for k, fn in sections.items():
+            fn(cur[k])
+        return self.ctl("apply", self.cfg(shell=cur)), (json.loads(sj.read_text()) if sj.exists() else None)
+
+    def test_shell_untouched(self):
+        self.assertEqual(self.shell()[1], None)
+        sj = self.t / "caelestia/shell.json"
+        odd = '{"bar":  {"entries": [{"id": "clock", "x": [1]}], "excludedScreens": "no"}, "general": {"battery": {"warnLevels": [{"level": 0}]}}}'
+        sj.write_text(odd)
+        r, d = self.shell()
+        self.assertTrue(r["ok"], r)          # strange hand-made values do not block the rest
+        self.assertEqual(sj.read_text(), odd)
+
+    def test_shell_battery_osd(self):
+        base = {"general": {"logo": "a"}, "osd": {"future": 1}}
+        def bat(b):
+            b["warnLevels"] = [w for w in b["warnLevels"] if w["level"] != 10]
+            b["warnLevels"][0]["level"] = 25
+            b["criticalLevel"] = -1
+        def osd(o):
+            o["hideDelay"] = 3000
+            o["enableMicrophone"] = True
+        r, d = self.shell(base, battery=bat, osd=osd)
+        self.assertTrue(r["ok"], r)
+        b = d["general"]["battery"]
+        self.assertEqual(([w["level"] for w in b["warnLevels"]], b["criticalLevel"], d["general"]["logo"]), ([25, 5], -1, "a"))
+        self.assertEqual(b["warnLevels"][1]["critical"], True)
+        self.assertEqual(b["warnLevels"][0]["title"], "Low battery")
+        self.assertEqual(d["osd"], {"future": 1, "hideDelay": 3000, "enableMicrophone": True})   # only what differs
+        dflt = self.ctl("state")["shell"]["defaults"]
+        def back(k):
+            return lambda x: (x.clear(), x.update(copy.deepcopy(dflt[k])))
+        r, d = self.shell(None, battery=back("battery"), osd=back("osd"))
+        self.assertEqual(d, base)            # Caelestia's defaults leave no trace
+
+    def test_shell_bar_and_undo(self):
+        base = {"bar": {"persistent": True}, "general": {"idle": {"inhibitWhenCharging": True}}}
+        def bar(b):
+            b["entries"] = [e for e in b["entries"] if e["id"] != "logo"]
+            b["entries"][0], b["entries"][1] = b["entries"][1], b["entries"][0]
+            b["entries"][-1]["enabled"] = False
+            b["excludedScreens"] = ["HDMI-A-1"]
+        r, d = self.shell(base, bar=bar)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual([e["id"] for e in d["bar"]["entries"]][:2], ["spacer", "workspaces"])
+        self.assertEqual((d["bar"]["entries"][-1], d["bar"]["excludedScreens"], d["bar"]["persistent"]),
+                         ({"id": "power", "enabled": False}, ["HDMI-A-1"], True))
+        sj = self.t / "caelestia/shell.json"
+        d["lock"] = {"later": True}; sj.write_text(json.dumps(d))
+        self.assertTrue(self.ctl("undo")["ok"])
+        self.assertEqual(json.loads(sj.read_text()), {**base, "lock": {"later": True}})
+
+    def test_shell_rejects(self):
+        def lvl(v):
+            return lambda b: b["warnLevels"][0].update(level=v)
+        cases = [dict(battery=lvl(0)), dict(battery=lvl("x")), dict(battery=lambda b: b.update(criticalLevel=80)),
+                 dict(battery=lambda b: b["warnLevels"][0].update(icon="a b")), dict(osd=lambda o: o.update(hideDelay=1)),
+                 dict(bar=lambda b: b["entries"].append({"id": "a b"})), dict(bar=lambda b: b.update(excludedScreens=["a\nb"]))]
+        for bad in cases:
+            r, d = self.shell({"a": 1}, **bad)
+            self.assertFalse(r.get("ok", True), bad)
+            self.assertEqual(d, {"a": 1})
+        sj = self.t / "caelestia/shell.json"
+        sj.write_text("{broken")
+        self.assertIsNone(self.ctl("state")["config"]["shell"])
+        self.assertTrue(self.ctl("apply", self.cfg(shell=None))["ok"])
+        self.assertEqual(sj.read_text(), "{broken")
 
     def test_prefs(self):
         self.assertTrue(self.ctl("prefs", {"transparent": False, "junk": 1})["ok"])

@@ -445,16 +445,172 @@ def with_power(idle, new):
 
 
 def put_idle(idle):
-    """Replaces general.idle only. Caelestia reloads shell.json live."""
-    d = shell_json()
-    general = d.setdefault("general", {})
-    if idle:
-        general["idle"] = idle
+    """Replaces general.idle only (an empty one is removed)."""
+    put_shell({"general.idle": idle or MISSING})
+
+
+# --- shell settings ---------------------------------------------------------------------
+# Battery warnings, on-screen indicators and the bar, also straight in shell.json. A key equal to Caelestia's
+# default is removed, so updates to Caelestia's defaults still reach you. Lists replace the defaults whole.
+WARN_LEVELS = [
+    {"level": 20, "title": "Low battery", "message": "You might want to plug in a charger", "icon": "battery_android_frame_2"},
+    {"level": 10, "title": "Did you see the previous message?", "message": "You should probably plug in a charger <b>now</b>",
+     "icon": "battery_android_frame_1"},
+    {"level": 5, "title": "Critical battery level", "message": "PLUG THE CHARGER RIGHT NOW!!", "icon": "battery_android_alert",
+     "critical": True}]
+BATTERY = {"warnLevels": WARN_LEVELS, "criticalLevel": 3}
+OSD = {"enabled": True, "hideDelay": 2000, "enableBrightness": True, "enableMicrophone": False}
+BAR_IDS = ("logo", "workspaces", "spacer", "activeWindow", "tray", "clock", "statusIcons", "power")
+BAR_ENTRIES = [{"id": i, "enabled": True} for i in
+               ("logo", "workspaces", "spacer", "activeWindow", "spacer", "tray", "clock", "statusIcons", "power")]
+ID_RE, ICON_RE = re.compile(r"[A-Za-z0-9_]{1,40}$"), re.compile(r"[a-z0-9_]{0,64}$")
+MISSING = object()
+
+
+def get_path(d, path):
+    for k in path.split("."):
+        if not isinstance(d, dict) or k not in d:
+            return MISSING
+        d = d[k]
+    return d
+
+
+def set_path(d, path, v):
+    """Sets or (MISSING) removes a key, dropping parents left empty. Refuses to replace a value that is not an object."""
+    *parents, last = path.split(".")
+    chain = [d]
+    for k in parents:
+        nxt = chain[-1].get(k, MISSING)
+        if nxt is MISSING:
+            if v is MISSING:
+                return
+            nxt = chain[-1][k] = {}
+        if not isinstance(nxt, dict):
+            raise Bad(f"shell.json: {k} is not valid")
+        chain.append(nxt)
+    if v is MISSING:
+        chain[-1].pop(last, None)
+        for k, parent in zip(reversed(parents), reversed(chain[:-1])):
+            if parent[k]:
+                break
+            del parent[k]
     else:
-        general.pop("idle", None)
-        if not general:
-            del d["general"]
+        chain[-1][last] = copy.deepcopy(v)
+
+
+def read_shell(d=None):
+    """What Caelestia uses: the value in shell.json when it is usable, otherwise its default."""
+    d = shell_json() if d is None else d
+    def pick(path, default, ok):
+        v = get_path(d, path)
+        return copy.deepcopy(v if v is not MISSING and ok(v) else default)
+    out = {"battery": {"warnLevels": pick("general.battery.warnLevels", WARN_LEVELS,
+                                          lambda v: isinstance(v, list) and all(isinstance(x, dict) for x in v)),
+                       "criticalLevel": pick("general.battery.criticalLevel", 3, lambda v: isinstance(v, int) and not isinstance(v, bool))},
+           "osd": {k: pick(f"osd.{k}", v, lambda x, v=v: type(x) is type(v)) for k, v in OSD.items()},
+           "bar": {"entries": pick("bar.entries", BAR_ENTRIES,
+                                   lambda v: isinstance(v, list) and all(isinstance(x, dict) and isinstance(x.get("id"), str) for x in v)),
+                   "excludedScreens": pick("bar.excludedScreens", [], lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v))}}
+    return out
+
+
+def extra(src, known, what):
+    """Keys of a list entry Orrery does not edit, kept as they are when they are plain values."""
+    out = {}
+    for k, v in src.items():
+        if k in known or not isinstance(k, str) or len(k) > 40:
+            continue
+        if isinstance(v, str):
+            v = line(v, what)
+        elif v is not None and not isinstance(v, (bool, int, float)):
+            continue
+        out[k] = v
+    return out
+
+
+def check_shell(s, old):
+    """A section left as it was is not checked again: a strange hand-made value never blocks the rest."""
+    out = {}
+    b = s.get("battery") or {}
+    if b == old["battery"]:
+        out["battery"] = old["battery"]
+    else:
+        levels = []
+        for w in b.get("warnLevels") or []:
+            if not isinstance(w, dict):
+                raise Bad("battery warning: invalid")
+            x = {**extra(w, ("level", "title", "message", "icon", "critical"), "battery warning"),
+                 "level": int(number(w.get("level"), 1, 99, "battery warning"))}
+            for k in ("title", "message"):
+                if k in w:
+                    x[k] = line(w[k], f"battery warning: {k}")
+            if "icon" in w:
+                if not isinstance(w["icon"], str) or not ICON_RE.match(w["icon"]):
+                    raise Bad("battery warning: invalid icon")
+                x["icon"] = w["icon"]
+            if "critical" in w:
+                x["critical"] = bool(w["critical"])
+            levels.append(x)
+        if len(levels) > 8:
+            raise Bad("battery: too many warnings")
+        crit = b.get("criticalLevel", 3)
+        crit = -1 if crit == -1 and not isinstance(crit, bool) else int(number(crit, 1, 50, "hibernate on low battery"))
+        out["battery"] = {"warnLevels": levels, "criticalLevel": crit}
+    o = s.get("osd") or {}
+    if o == old["osd"]:
+        out["osd"] = old["osd"]
+    else:
+        out["osd"] = {"enabled": bool(o.get("enabled", True)), "hideDelay": int(number(o.get("hideDelay", 2000), 500, 10000, "indicator duration")),
+                      "enableBrightness": bool(o.get("enableBrightness", True)), "enableMicrophone": bool(o.get("enableMicrophone", False))}
+    bar = s.get("bar") or {}
+    if bar == old["bar"]:
+        out["bar"] = old["bar"]
+    else:
+        entries = []
+        for e in bar.get("entries") or []:
+            if not isinstance(e, dict) or not isinstance(e.get("id"), str) or not ID_RE.match(e["id"]):
+                raise Bad("bar: invalid entry")
+            entries.append({**extra(e, ("id", "enabled"), "bar entry"), "id": e["id"], "enabled": bool(e.get("enabled", True))})
+        if len(entries) > 30:
+            raise Bad("bar: too many entries")
+        screens = [line(x, "bar: screen", 200, empty=False) for x in bar.get("excludedScreens") or []]
+        if len(screens) > 30:
+            raise Bad("bar: too many screens")
+        out["bar"] = {"entries": entries, "excludedScreens": screens}
+    return out
+
+
+def shell_changes(old, new):
+    """{path: value or MISSING} for what differs from what Caelestia uses now. Nothing else in shell.json is touched."""
+    out = {}
+    def put(path, now, was, default):
+        if now != was:
+            out[path] = MISSING if now == default else now
+    put("general.battery.warnLevels", new["battery"]["warnLevels"], old["battery"]["warnLevels"], WARN_LEVELS)
+    put("general.battery.criticalLevel", new["battery"]["criticalLevel"], old["battery"]["criticalLevel"], 3)
+    for k, v in OSD.items():
+        put(f"osd.{k}", new["osd"][k], old["osd"][k], v)
+    put("bar.entries", new["bar"]["entries"], old["bar"]["entries"], BAR_ENTRIES)
+    put("bar.excludedScreens", new["bar"]["excludedScreens"], old["bar"]["excludedScreens"], [])
+    return out
+
+
+def put_shell(changes):
+    """Writes several keys of shell.json at once. Caelestia reloads it live."""
+    if not changes:
+        return
+    d = shell_json()
+    for path, v in changes.items():
+        set_path(d, path, v)
     write(CAEL / "shell.json", json.dumps(d, indent=4, ensure_ascii=False) + "\n")
+
+
+def monitors():
+    try:
+        return [{"name": m["name"], "description": m.get("description", "")}
+                for m in json.loads(run("hyprctl", "monitors", "all", "-j").stdout) if isinstance(m.get("name"), str)]
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return []
 
 
 def has_battery():
@@ -495,8 +651,11 @@ def restore(d):
             write(path, (d / name).read_text())
         elif path.exists():
             path.unlink()
-    if (d / "idle.json").exists():      # only what Orrery changed, not the whole shell.json
+    # Only the keys Orrery changed, not the whole shell.json
+    if (d / "idle.json").exists():      # backups made by 0.2.0beta1
         put_idle(json.loads((d / "idle.json").read_text()))
+    if (d / "shell-keys.json").exists():
+        put_shell({k: v[1] if v[0] else MISSING for k, v in json.loads((d / "shell-keys.json").read_text()).items()})
 
 
 def hypr_errors():
@@ -511,21 +670,30 @@ def hypr_errors():
 
 def apply(cfg):
     power = check_power(cfg["power"]) if isinstance(cfg.get("power"), dict) else None
+    shell = cfg.get("shell") if isinstance(cfg.get("shell"), dict) else None
     cfg = validate(cfg)
     apps = desktop_apps()
-    idle = None
+    changes = {}
+    if power or shell:
+        raw = shell_json()
     if power:
         old = idle_json()
         idle = with_power(old, power)
+        if idle != old:
+            changes["general.idle"] = idle or MISSING
+    if shell:
+        now = read_shell(raw)
+        shell = check_shell(shell, now)
+        changes.update(shell_changes(now, shell))
     if not (CONF / "hypr/hyprland.lua").exists() and not DRY:
         raise Bad("Caelestia's Hyprland config was not found")
     before = hypr_errors()
     d = backup()
-    if idle is not None and idle != old:
-        (d / "idle.json").write_text(json.dumps(old))
+    if changes:
+        was = {k: get_path(raw, k) for k in changes}
+        (d / "shell-keys.json").write_text(json.dumps({k: [v is not MISSING, None if v is MISSING else v] for k, v in was.items()}))
     try:
-        if idle is not None and idle != old:
-            put_idle(idle)
+        put_shell(changes)
         write(LUADIR / "engine.lua", (SHARE / "lua/engine.lua").read_text())
         write(LUADIR / "settings.lua", settings_lua(cfg, apps))
         write(USER_LUA, with_hook(USER_LUA.read_text() if USER_LUA.exists() else ""))
@@ -543,7 +711,7 @@ def apply(cfg):
         restore(d)
         hypr_errors()
         raise Bad("Hyprland rejected the changes, previous settings restored: " + errors[:400])
-    return {"ok": True, "config": {**cfg, "power": power}, "backup": d.name}
+    return {"ok": True, "config": {**cfg, "power": power, "shell": shell}, "backup": d.name}
 
 
 def undo():
@@ -742,6 +910,10 @@ def state():
         cfg["power"] = read_power()
     except (Bad, ValueError):
         cfg["power"] = None
+    try:
+        cfg["shell"] = read_shell()
+    except (Bad, ValueError):
+        cfg["shell"] = None
     helper = "/usr/lib/orrery/orrery-helper"
     walls = wall_state()
     greeter = ""
@@ -756,6 +928,7 @@ def state():
         "active": USER_LUA.exists() and BEGIN in USER_LUA.read_text(),
         "walls": walls,
         "power": {"defaults": read_power({}), "hibernate": can_hibernate(), "battery": has_battery()},
+        "shell": {"defaults": read_shell({}), "monitors": monitors()},
         "canUndo": BACKUPS.is_dir() and any(BACKUPS.iterdir()),
         "system": {
             "helper": os.path.exists(helper), "caelestia": (CONF / "hypr/hyprland.lua").exists(),

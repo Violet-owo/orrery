@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Bar, a new page (`Ctrl+3`): order of the blocks, spaces between them, the screens that show the bar, and the volume
+  and brightness indicators (microphone too, and how long they stay). Pages after it move by one; *Health* is `Ctrl+0`
+- Power: low battery warnings at the levels you choose, and when Caelestia hibernates on an almost empty battery,
+  with a warning when the computer cannot hibernate
+- Undo restores only the keys of shell.json that Orrery changed
+
 ## 0.2.0beta1
 
 - Power, a new page: when to lock, turn the screen off and suspend, with separate times on battery and while charging,

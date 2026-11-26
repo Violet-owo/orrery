@@ -33,7 +33,8 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 | **Startup** | Keyboard backlight at boot. |
 | **Login** | Caelestia's lock screen as your greetd login, following your colours and wallpaper. *Experimental.* |
 | **Appearance** | Follows Caelestia's palette live, plus transparency, motion, rounding and language. |
-| **Power** | When to lock, turn the screen off and suspend, on battery and while charging. |
+| **Bar** | Order of the bar's blocks, which screens show it, and the volume and brightness indicators. |
+| **Power** | When to lock, turn the screen off and suspend, on battery and while charging; low battery warnings. |
 | **Health** | Checks for the usual breakages, undo, and an off switch. |
 
 English and Italian. Fully usable without a mouse.
@@ -84,7 +85,7 @@ git clone https://github.com/Violet-owo/orrery && orrery/bin/orrery
 | Keys | |
 |---|---|
 | Arrows, `Enter`, `Space`, `Esc` | move, activate, go back |
-| `Ctrl+1…9`, `Ctrl+Tab` | pages |
+| `Ctrl+1…9`, `Ctrl+0`, `Ctrl+Tab` | pages |
 | `Ctrl+F` or `/` | search settings |
 | `Alt+←/→` | previous / next area |
 | `Ctrl+S`, `Ctrl+Z`, `Ctrl+Shift+Z` | apply, undo, redo |
@@ -130,7 +131,7 @@ Translations live in `ui/i18n/`: English strings are the keys.
 
 ## Italiano
 
-Orrery aggiunge a Caelestia le impostazioni che mancano: aree (`Super+S/D/M`…), tastiera, app predefinite, sfondi, energia, retroilluminazione e login,
+Orrery aggiunge a Caelestia le impostazioni che mancano: aree (`Super+S/D/M`…), tastiera, app predefinite, sfondi, barra, energia e batteria, retroilluminazione e login,
 con lo stesso stile e le stesse animazioni della shell. È in italiano e in inglese, e si usa anche solo da tastiera (`F1` per la guida).
 Le modifiche a Hyprland partono solo con **Applica**, e si possono annullare da **Stato**.
 
