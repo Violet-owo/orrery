@@ -495,12 +495,14 @@ class T(unittest.TestCase):
         f.write_text(json.dumps([rel("0.3.0", False)]))
         self.assertEqual(self.ctl("updates", {"auto": True})["latest"]["version"], "0.2.0")
         self.assertEqual(self.ctl("updates", {"force": True})["latest"]["version"], "0.3.0")
-        # versions against the one that runs, and what can be installed
+        # versions against the one that runs, and what can be installed (beta channel: a beta can run here too)
+        self.ctl("prefs", {"channel": "beta"})
         for latest, state in (("0.0.1", "older"), ("99.0.0", "newer"), (cur, "same")):
             f.write_text(json.dumps([rel(latest, False)]))
             r = self.ctl("updates", {"force": True})
             self.assertEqual(r["state"], state, latest)
             self.assertEqual(r["canInstall"], state != "same")
+        self.ctl("prefs", {"channel": "stable"})
         f.write_text(json.dumps([rel("99.0.0", False, False)]))
         r = self.ctl("updates", {"force": True})
         self.assertFalse(r["canInstall"])
