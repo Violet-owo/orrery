@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+The first stable release with everything from the betas 0.1.2beta1 to 0.2.0beta4, listed below.
+
 ## 0.2.0beta4
 
 - Scroll bars in the pages, the shortcuts, the picture chooser and every list: thin, shown while scrolling, wider under the pointer, draggable

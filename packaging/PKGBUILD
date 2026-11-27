@@ -1,6 +1,6 @@
 # Maintainer: Violet Miller
 pkgname=orrery-caelestia
-pkgver=0.2.0beta4
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Extra settings for the Caelestia desktop: areas, keyboard, default apps, wallpapers, bar, power, login (unofficial)"
 arch=('any')
