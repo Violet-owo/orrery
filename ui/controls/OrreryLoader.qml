@@ -5,7 +5,9 @@ import qs.core
 Item {
     id: root
     property real size: 96
-    property bool running: visible
+    property bool running: visible && Ui.awake
+    property color tint: Theme.primary                       // sun and planets
+    property color ring: Qt.alpha(Theme.fgVariant, 0.35)     // orbits
     readonly property real k: size / 128 // the logo is drawn on 128×128
 
     implicitWidth: size
@@ -21,7 +23,7 @@ Item {
             radius: width / 2
             color: "transparent"
             border.width: Math.max(1, 2.5 * root.k)
-            border.color: Qt.alpha(Theme.fgVariant, 0.35)
+            border.color: root.ring
         }
     }
     Rectangle {
@@ -29,7 +31,7 @@ Item {
         width: 22 * root.k
         height: width
         radius: width / 2
-        color: Theme.primary
+        color: root.tint
         SequentialAnimation on scale {
             running: root.running
             loops: Animation.Infinite
@@ -51,7 +53,7 @@ Item {
                 width: orbit.modelData[1] * 2 * root.k
                 height: width
                 radius: width / 2
-                color: Theme.primary
+                color: root.tint
             }
             RotationAnimator on rotation {
                 running: root.running

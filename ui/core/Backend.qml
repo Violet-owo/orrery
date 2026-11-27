@@ -74,10 +74,13 @@ Singleton {
         });
     }
 
-    function refresh(keepEdits: bool): void {
+    function refresh(keepEdits: bool, after: var): void {
         call("state", null, r => {
-            if (r.error)
+            if (r.error) {
+                if (after)
+                    after();
                 return say(r.error, true);
+            }
             const byId = {};
             for (const a of r.apps)
                 byId[a.id] = a;
@@ -89,6 +92,8 @@ Singleton {
                 past = [];
                 future = [];
             }
+            if (after)
+                after();
         });
     }
 
@@ -99,15 +104,19 @@ Singleton {
             return;
         busy = true;
         call("apply", cfg, r => {
-            busy = false;
             const quit = quitAfterApply;
             quitAfterApply = false;
-            if (!r.ok)
+            if (!r.ok) {
+                busy = false;
                 return say(r.error, true);
+            }
             if (quit)
                 return Qt.quit();
-            say(I18n.tr("Applied"), false);
-            refresh(false);
+            // Still busy until the new state is read: the bar leaves once, instead of flashing back first
+            refresh(false, () => {
+                busy = false;
+                say(I18n.tr("Applied"), false);
+            });
         });
     }
 

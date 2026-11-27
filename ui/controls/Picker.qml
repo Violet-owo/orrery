@@ -105,6 +105,7 @@ Item {
                 spacing: Theme.gap
                 model: root.shown
                 highlightMoveDuration: 200
+                Scroller { parent: view; target: view }
                 delegate: Rectangle {
                     id: item
                     required property var modelData

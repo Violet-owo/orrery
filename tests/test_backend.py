@@ -344,6 +344,121 @@ class T(unittest.TestCase):
         with self.assertRaises(m.Bad):
             m.giphy_save({"id": "bbb"})
 
+    def test_spotify(self):
+        """Only spicetify's own commands are run; the previous theme comes back when the colours are turned off."""
+        log, exe, sp = self.t / "spice.log", self.t / "fakespice", self.t / "spotify"
+        exe.write_text(f'#!/bin/sh\n[ "$1" = -v ] && echo 2.46.7 && exit 0\necho "$@" >> {log}\n[ "$1" = apply ] && [ -f {self.t}/fail ] && echo "error: backup first" && exit 1\nexit 0\n')
+        exe.chmod(0o755)
+        (sp / "Apps/xpui").mkdir(parents=True)
+        (sp / "Apps/xpui/index.html").write_text("<script src='spicetifyWrapper.js'></script>")
+        conf = self.t / "spicetify"
+        (conf / "Themes/caelestia").mkdir(parents=True)
+        (conf / "Themes/caelestia/color.ini").write_text("[caelestia]\n")
+        (conf / "config-xpui.ini").write_text(f"[Setting]\nspotify_path = {sp}\ncurrent_theme = marketplace ; x\ncolor_scheme =\n\n"
+                                              "[AdditionalOptions]\nextensions = fullAppDisplay.js\n\n[Backup]\nversion = 1.2\n")
+        self.env["ORRERY_SPICETIFY"] = str(exe)
+        st = self.ctl("state")["spotify"]
+        self.assertEqual((st["kind"], st["applied"], st["theme"], st["caelestiaTheme"]), ("spotify", True, "marketplace", True))
+        self.assertIn({"name": "fullAppDisplay.js", "on": True}, st["extensions"])
+        self.assertTrue(self.ctl("spotify", {"action": "colours", "on": True})["ok"])
+        self.assertEqual(json.loads((self.t / "orrery/spotify.json").read_text())["theme"], "marketplace")
+        (conf / "config-xpui.ini").write_text((conf / "config-xpui.ini").read_text().replace("marketplace", "caelestia"))
+        self.assertTrue(self.ctl("spotify", {"action": "colours", "on": False})["ok"])
+        self.assertTrue(self.ctl("spotify", {"action": "extension", "name": "shuffle+.js", "on": False})["ok"])
+        (self.t / "fail").touch()
+        self.assertTrue(self.ctl("spotify", {"action": "apply"})["ok"])           # Spotify updated: backup again
+        self.assertEqual(log.read_text().splitlines(), [
+            "config current_theme caelestia color_scheme caelestia replace_colors 1", "apply",
+            "config current_theme marketplace color_scheme ", "apply",
+            "config extensions shuffle+.js-", "apply", "apply", "restore backup apply"])
+        for bad in ({"action": "extension", "name": "../x.js"}, {"action": "rm"}):
+            self.assertFalse(self.ctl("spotify", bad).get("ok", True), bad)
+        (conf / "config-xpui.ini").write_text("[Setting]\nspotify_path = /var/lib/flatpak/app/com.spotify.Client\n")
+        self.assertFalse(self.ctl("spotify", {"action": "apply"}).get("ok", True))
+
+    def test_health_rebuild(self):
+        b = self.t / "bin"; b.mkdir()
+        (b / "quickshell").write_text("#!/bin/sh\necho 'WARN: Quickshell was built against Qt 6.12.0 but the system has updated to Qt 6.12.1 without rebuilding the package.'\n")
+        (b / "pacman").write_text("#!/bin/sh\n[ \"$2\" = quickshell-git ] && exit 0\nexit 1\n")
+        for f in b.iterdir():
+            f.chmod(0o755)
+        self.env["PATH"] = f"{b}:{self.env['PATH']}"
+        q = next(c for c in self.ctl("check")["checks"] if c["id"] == "quickshell")
+        self.assertFalse(q["ok"])
+        self.assertEqual((q["fix"], q["note"]), ("paru -S --rebuild aur/quickshell-git", "Qt 6.12.0 → 6.12.1"))
+
+    def test_colours(self):
+        cli = self.t / "caelestia/cli.json"
+        cli.write_text(json.dumps({"record": {"x": 1}, "theme": {"enableBtop": False}}))
+        c = self.ctl("state")["config"]["colours"]
+        self.assertEqual((c["enableBtop"], c["enableGtk"], c["iconTheme"]), (False, True, ""))
+        self.assertTrue(self.ctl("apply", self.cfg(colours=c))["ok"])
+        self.assertEqual(json.loads(cli.read_text()), {"record": {"x": 1}, "theme": {"enableBtop": False}})   # untouched
+        r = self.ctl("apply", self.cfg(colours={**c, "enableBtop": True, "enableDiscord": False, "iconThemeDark": "Papirus-Dark"}))
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(json.loads(cli.read_text()), {"record": {"x": 1}, "theme": {"enableDiscord": False, "iconThemeDark": "Papirus-Dark"}})
+        self.assertTrue(self.ctl("undo")["ok"])
+        self.assertEqual(json.loads(cli.read_text())["theme"], {"enableBtop": False})
+        self.assertFalse(self.ctl("apply", self.cfg(colours={**c, "iconTheme": "x;rm"})).get("ok", True))
+
+    def test_desktop_and_panels(self):
+        def desk(x):
+            x.update(clock=True, clockPosition="top-center", clockScale=1.5, vis=True)
+        def pan(x):
+            x.update(weather="London", sessionButton="suspend")
+        r, d = self.shell({"background": {"wallpaperEnabled": True}}, desktop=desk, panels=pan)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(d["background"], {"wallpaperEnabled": True, "desktopClock": {"enabled": True, "position": "top-center", "scale": 1.5},
+                                           "visualiser": {"enabled": True}})
+        self.assertEqual((d["services"], d["session"]), ({"weatherLocation": "London"}, {"commands": {"hibernate": ["suspend"]}, "icons": {"hibernate": "bedtime"}}))
+        self.assertEqual(self.ctl("state")["config"]["shell"]["panels"]["sessionButton"], "suspend")
+        dflt = self.ctl("state")["shell"]["defaults"]
+        r, d = self.shell(None, desktop=lambda x: x.update(dflt["desktop"]), panels=lambda x: x.update(dflt["panels"]))
+        self.assertEqual(d, {"background": {"wallpaperEnabled": True}})
+        for bad in (dict(desktop=lambda x: x.update(clockPosition="nowhere")), dict(desktop=lambda x: x.update(clockScale=9)),
+                    dict(panels=lambda x: x.update(sessionButton="rm")), dict(panels=lambda x: x.update(weather="a\nb"))):
+            r, _ = self.shell(None, **bad)
+            self.assertFalse(r.get("ok", True), bad)
+
+    def test_thumbnails_and_defaults(self):
+        from PIL import Image
+        big, small = self.t / "big.png", self.t / "small.png"
+        Image.new("RGB", (3000, 1500), (10, 20, 30)).save(big)
+        Image.new("RGB", (200, 100)).save(small)
+        self.env["XDG_CACHE_HOME"] = str(self.t / "cache")
+        t = self.ctl("pic-thumbs", {"paths": [str(big), str(small), "relative.png"]})["thumbs"]
+        self.assertEqual(set(t), {str(big), str(small)})
+        self.assertEqual(t[str(small)], str(small))                       # small enough: used as it is
+        self.assertTrue(t[str(big)].startswith(str(self.t / "cache/orrery/thumbs/")))
+        self.assertEqual(Image.open(t[str(big)]).size, (280, 140))
+        (self.t / "mimeapps.list").write_text("[Default Applications]\nimage/png=zen.desktop;\n")
+        self.assertEqual(self.ctl("state")["defaults"]["images"], "zen.desktop")   # read from the file, no xdg-mime
+
+    def test_shortcuts(self):
+        (self.t / "hypr").mkdir()
+        (self.t / "hypr/variables.lua").write_text('return {\n    kbSession = "CTRL + ALT + Delete", -- menu\n    kbCommunicationWs = "SUPER + D",\n'
+                                                   '    kbEditor = "SUPER + C",\n    editor = "codium",\n    kbNextWs = { "SUPER + mouse_down", "SUPER + Page_Down" },\n'
+                                                   '    kbLock = "SUPER + L",\n}\n')
+        (self.t / "caelestia/hypr-vars.lua").write_text('return {\n    editor = "gnome-text-editor --new-window", -- mine\n    kbLock = "SUPER + Escape",\n}\n')
+        (self.t / "caelestia/hypr-user.lua").write_text(BASE_USER + 'hl.bind("SUPER + G", hl.dsp.exec_cmd("gimp"))\n-- hl.bind("SUPER + H", x)\n')
+        b = self.t / "bin"; b.mkdir()
+        live = [{"modmask": 12, "key": "Delete"}, {"modmask": 64, "key": "D"}, {"modmask": 64, "key": "Escape"}, {"modmask": 64, "key": "G"},
+                {"modmask": 64, "key": "Y"}, {"modmask": 0, "key": "Caps_Lock", "non_consuming": True}]
+        (b / "hyprctl").write_text("#!/bin/sh\ncat <<'J'\n" + json.dumps(live) + "\nJ\n")
+        (b / "hyprctl").chmod(0o755)
+        self.env["PATH"] = f"{b}:{self.env['PATH']}"
+        self.ctl("apply", self.cfg())          # the "Chat" area takes SUPER + D, so Caelestia's Messages is not listed
+        rows = {r["label"]: r for r in self.ctl("shortcuts", {})["shortcuts"]}
+        self.assertEqual((rows["Chat"]["source"], rows["Chat"]["keys"], rows["Chat"]["active"]), ("orrery", ["SUPER + D"], True))
+        self.assertNotIn("Messages", rows)
+        self.assertEqual(rows["Lock the screen"]["keys"], ["SUPER + Escape"])                  # hypr-vars.lua wins
+        self.assertEqual(rows["Text editor"]["sub"], "gnome-text-editor --new-window")         # -- inside quotes is not a comment
+        self.assertEqual((rows["Shut down menu"]["active"], rows["Next workspace"]["active"]), (True, False))
+        self.assertEqual((rows["gimp"]["source"], rows["gimp"]["keys"]), ("user", ["SUPER + G"]))
+        other = [r["keys"] for r in rows.values() if r["source"] == "other"]
+        self.assertEqual(other, [["SUPER + Y"]])                                               # listeners are not shortcuts
+        self.assertIn("Switch keyboard layout", rows)
+
     def test_prefs(self):
         self.assertTrue(self.ctl("prefs", {"transparent": False, "junk": 1})["ok"])
         self.assertTrue(self.ctl("prefs", {"base": 0.5, "language": "it"})["ok"])

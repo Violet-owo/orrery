@@ -18,8 +18,10 @@ Item {
     // Both grids use a ListModel: adding rows (more GIPHY results) does not rebuild the ones already shown
     function fillFiles(): void {
         const q = filesQuery.toLowerCase(), list = q ? files.filter(f => f.title.toLowerCase().includes(q)) : files;
-        if (list.length === shownFiles.count && list.every((f, i) => shownFiles.get(i).pid === f.pid))
+        if (list.length === shownFiles.count && list.every((f, i) => shownFiles.get(i).pid === f.pid)) {
+            list.forEach((f, i) => { if (shownFiles.get(i).preview !== f.preview) shownFiles.setProperty(i, "preview", f.preview); });
             return;
+        }
         shownFiles.clear();
         for (const f of list)
             shownFiles.append(f);
@@ -60,12 +62,19 @@ Item {
         if (t === "files" || hasKey) query.forceActiveFocus();
         else keyField.focusInput();
     }
+    // Still pictures are shown from small thumbnails: a 4K wallpaper decoded by Qt costs tens of MB
     function loadFiles(): void {
         Backend.call("pic-files", {}, r => {
-            const list = (r.files ?? []).map(f => ({ pid: f.path, path: f.path, title: f.name, preview: `file://${f.path}`,
-                moving: /\.(gif|webp)$/i.test(f.path), transparent: -1 }));
-            if (JSON.stringify(list.map(f => f.pid)) !== JSON.stringify(files.map(f => f.pid)))
+            const list = (r.files ?? []).map(f => ({ pid: f.path, path: f.path, title: f.name, moving: /\.(gif|webp)$/i.test(f.path), transparent: -1,
+                preview: f.still ? (f.thumb ? `file://${f.thumb}` : "") : `file://${f.path}` }));
+            if (JSON.stringify(list) !== JSON.stringify(files))
                 files = list;
+            const missing = (r.files ?? []).filter(f => f.still && !f.thumb).map(f => f.path);
+            if (missing.length)
+                Backend.call("pic-thumbs", { paths: missing }, t => {
+                    const made = t.thumbs ?? {};
+                    files = files.map(f => made[f.path] ? Object.assign({}, f, { preview: `file://${made[f.path]}` }) : f);
+                });
         });
     }
     function search(q: string, more: bool): void {
@@ -294,7 +303,7 @@ Item {
                     anchors.fill: parent
                     visible: root.tab === "files"
                     model: shownFiles
-                    playing: root.open && visible
+                    playing: root.open && visible && Ui.awake
                     onChosen: item => root.pick(item)
                     onLeaveTop: query.forceActiveFocus()
                     onClose: root.close()
@@ -305,7 +314,7 @@ Item {
                     visible: root.tab === "giphy"
                     model: results
                     animateAll: true
-                    playing: root.open && visible
+                    playing: root.open && visible && Ui.awake
                     onChosen: item => root.pick(item)
                     onLeaveTop: query.forceActiveFocus()
                     onClose: root.close()

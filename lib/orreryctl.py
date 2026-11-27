@@ -131,10 +131,47 @@ def roles_for(apps):
     return out
 
 
-def system_default(role):
+def mimeapps_defaults():
+    """[Default Applications] of every mimeapps.list, in the order the XDG spec reads them (first wins)."""
+    desktops = [d.lower() for d in (os.environ.get("XDG_CURRENT_DESKTOP") or "").split(":") if d]
+    dirs = [CONF] + [Path(p) for p in (os.environ.get("XDG_CONFIG_DIRS") or "/etc/xdg").split(":") if p]
+    dirs += [d / "applications" for d in DATA_DIRS]
+    out = {}
+    for d in dirs:
+        for name in [f"{x}-mimeapps.list" for x in desktops] + ["mimeapps.list"]:
+            cp = configparser.RawConfigParser(strict=False, interpolation=None, delimiters=("=",))
+            cp.optionxform = str
+            try:
+                cp.read(d / name, encoding="utf-8")
+            except (configparser.Error, UnicodeDecodeError):
+                continue
+            if cp.has_section("Default Applications"):
+                for mime, apps in cp.items("Default Applications"):
+                    out.setdefault(mime, [a for a in apps.split(";") if a.strip()])
+    # No choice made: xdg-mime then takes the first app that declares the type (mimeinfo.cache)
+    for d in DATA_DIRS:
+        for name, sec in (("defaults.list", "Default Applications"), ("mimeinfo.cache", "MIME Cache")):
+            cp = configparser.RawConfigParser(strict=False, interpolation=None, delimiters=("=",))
+            cp.optionxform = str
+            try:
+                cp.read(d / "applications" / name, encoding="utf-8")
+            except (configparser.Error, UnicodeDecodeError):
+                continue
+            if cp.has_section(sec):
+                for mime, apps in cp.items(sec):
+                    out.setdefault(mime, [a for a in apps.split(";") if a.strip()])
+    return out
+
+
+def system_default(role, apps=None, table=None):
+    """Like xdg-mime query default, without starting a shell script per type (9 of them took a quarter of a second)."""
     if role not in MIME:
         return ""
-    return run("xdg-mime", "query", "default", MIME[role][1] if role == "browser" else MIME[role][0]).stdout.strip()
+    mime = MIME[role][1] if role == "browser" else MIME[role][0]
+    for a in (table if table is not None else mimeapps_defaults()).get(mime, []):
+        if apps is None or a.strip() in apps:
+            return a.strip()
+    return run("xdg-mime", "query", "default", mime).stdout.strip()
 
 
 def xkb_layouts():
@@ -465,6 +502,32 @@ GIFS = {"media": ("paths.mediaGif", "root:/assets/bongocat.gif"), "session": ("p
         "notifs": ("paths.noNotifsPic", "root:/assets/dino.png"), "lock": ("paths.lockNoNotifsPic", "root:/assets/dino.png")}
 SPEEDS = {"mediaSpeed": ("general.mediaGifSpeedAdjustment", 300, 30, 3000), "sessionSpeed": ("general.sessionGifSpeed", 0.7, 0.1, 5)}
 IMG_EXT = (".gif", ".webp", ".png", ".jpg", ".jpeg", ".svg")
+# Plain options: key -> (path in shell.json, Caelestia's default, range | choices | "text" | None for a switch)
+CLOCK_AT = [f"{v}-{h}" for v in ("top", "middle", "bottom") for h in ("left", "center", "right")]
+DC, VIS = "background.desktopClock", "background.visualiser"
+SIMPLE = {
+    "desktop": {"clock": (f"{DC}.enabled", False, None), "clockPosition": (f"{DC}.position", "bottom-right", CLOCK_AT),
+                "clockScale": (f"{DC}.scale", 1.0, (0.25, 4)), "clockInvert": (f"{DC}.invertColors", False, None),
+                "clockBg": (f"{DC}.background.enabled", False, None), "clockBgOpacity": (f"{DC}.background.opacity", 0.7, (0, 1)),
+                "clockBgBlur": (f"{DC}.background.blur", True, None), "clockShadow": (f"{DC}.shadow.enabled", True, None),
+                "clockShadowOpacity": (f"{DC}.shadow.opacity", 0.7, (0, 1)), "clockShadowBlur": (f"{DC}.shadow.blur", 0.4, (0, 1)),
+                "vis": (f"{VIS}.enabled", False, None), "visAutoHide": (f"{VIS}.autoHide", True, None),
+                "visBlur": (f"{VIS}.blur", False, None), "visRounding": (f"{VIS}.rounding", 1.0, (0, 2)),
+                "visSpacing": (f"{VIS}.spacing", 1.0, (0, 4))},
+    "panels": {"weather": ("services.weatherLocation", "", "text"), "notifClick": ("notifs.actionOnClick", False, None),
+               "notifFullscreen": ("notifs.fullscreenExpireTimeout", 2000, (500, 60000))},
+}
+# The third button of the shut down menu: Hibernate does nothing on a computer that cannot hibernate
+SESSION_BUTTON = {"hibernate": (["hibernate"], "downloading"), "suspend": (["suspend"], "bedtime"),
+                  "lock": (["loginctl", "lock-session"], "lock")}
+
+
+def simple_ok(default, spec):
+    if isinstance(default, bool):
+        return lambda x: isinstance(x, bool)
+    if isinstance(default, (int, float)):
+        return lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+    return lambda x: isinstance(x, str)
 BAR_IDS = ("logo", "workspaces", "spacer", "activeWindow", "tray", "clock", "statusIcons", "power")
 BAR_ENTRIES = [{"id": i, "enabled": True} for i in
                ("logo", "workspaces", "spacer", "activeWindow", "spacer", "tray", "clock", "statusIcons", "power")]
@@ -518,6 +581,11 @@ def read_shell(d=None):
                    "excludedScreens": pick("bar.excludedScreens", [], lambda v: isinstance(v, list) and all(isinstance(x, str) for x in v))},
            "gifs": {**{k: pick(path, v, lambda x: isinstance(x, str) and x != "") for k, (path, v) in GIFS.items()},
                     **{k: pick(path, v, lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)) for k, (path, v, *_) in SPEEDS.items()}}}
+    for sec, opts in SIMPLE.items():
+        out[sec] = {k: pick(path, v, simple_ok(v, spec)) for k, (path, v, spec) in opts.items()}
+    cmd = get_path(d, "session.commands.hibernate")
+    out["panels"]["sessionButton"] = "hibernate" if cmd is MISSING else next(
+        (k for k, (c, _) in SESSION_BUTTON.items() if c == cmd), "custom")
     return out
 
 
@@ -599,6 +667,32 @@ def check_shell(s, old):
             out["gifs"][k] = v
         for k, (_, default, lo, hi) in SPEEDS.items():
             out["gifs"][k] = round(float(number(g.get(k, default), lo, hi, "animation speed")), 3)
+    for sec, opts in SIMPLE.items():
+        new = s.get(sec) or {}
+        if new == old[sec]:
+            out[sec] = old[sec]
+            continue
+        out[sec] = {}
+        for k, (path, default, spec) in opts.items():
+            v = new.get(k, default)
+            if v == old[sec].get(k):
+                out[sec][k] = v           # unchanged, even if written by hand
+            elif spec is None:
+                out[sec][k] = bool(v)
+            elif spec == "text":
+                out[sec][k] = line(v, k, 120)
+            elif isinstance(spec, list):
+                if v not in spec:
+                    raise Bad(f"{k}: unknown choice")
+                out[sec][k] = v
+            else:
+                v = number(v, spec[0], spec[1], k)
+                out[sec][k] = int(v) if isinstance(default, int) else round(float(v), 3)
+        if sec == "panels":
+            b = new.get("sessionButton", old["panels"]["sessionButton"])
+            if b != old["panels"]["sessionButton"] and b not in SESSION_BUTTON:
+                raise Bad("session button: unknown choice")
+            out[sec]["sessionButton"] = b
     return out
 
 
@@ -616,6 +710,14 @@ def shell_changes(old, new):
     put("bar.excludedScreens", new["bar"]["excludedScreens"], old["bar"]["excludedScreens"], [])
     for k, (path, default, *_) in {**GIFS, **SPEEDS}.items():
         put(path, new["gifs"][k], old["gifs"][k], default)
+    for sec, opts in SIMPLE.items():
+        for k, (path, default, _) in opts.items():
+            put(path, new[sec][k], old[sec][k], default)
+    b = new["panels"]["sessionButton"]
+    if b != old["panels"]["sessionButton"] and b in SESSION_BUTTON:
+        cmd, icon = SESSION_BUTTON[b]
+        out["session.commands.hibernate"] = MISSING if b == "hibernate" else cmd
+        out["session.icons.hibernate"] = MISSING if b == "hibernate" else icon
     return out
 
 
@@ -634,6 +736,60 @@ GIF_DIR = DATA_DIRS[0] / "orrery/gifs"
 GIPHY_KEY = OWN / "giphy.json"
 GIPHY = "https://api.giphy.com/v1"
 MAX_PIC = 25 * 1024 * 1024
+
+
+THUMBS = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "orrery/thumbs"
+
+
+def thumb(path, width=480):
+    """A small WebP copy of a still picture, so the interface never decodes a 4K image (Qt does it at full size).
+    Animations are returned as they are. Falls back to the original when Pillow cannot read it."""
+    f = Path(path)
+    try:
+        st = f.stat()
+    except OSError:
+        return str(path)
+    if f.suffix.lower() not in (".png", ".jpg", ".jpeg"):
+        return str(f)       # animations and vectors stay as they are
+    import hashlib
+    out = THUMBS / (hashlib.sha1(f"{f}:{st.st_mtime_ns}:{st.st_size}:{width}".encode()).hexdigest()[:24] + ".webp")
+    if out.exists():
+        return str(out)
+    try:
+        from PIL import Image
+        im = Image.open(f)
+        if max(im.size) <= width * 1.5:
+            return str(f)   # already small: reading the header was enough
+        im.draft("RGB", (width * 2, width * 2))       # JPEG: decodes directly at a smaller size
+        im.thumbnail((width, width * 4), Image.LANCZOS)
+        if im.mode not in ("RGB", "RGBA"):
+            im = im.convert("RGBA")
+        THUMBS.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_name(out.name + ".orrery-tmp")
+        im.save(tmp, "WEBP", quality=82, method=4)
+        os.replace(tmp, out)
+        return str(out)
+    except Exception:
+        return str(f)
+
+
+def thumb_cached(path, width):
+    """The thumbnail if it was made already (only a stat, nothing is opened)."""
+    import hashlib
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return ""
+    out = THUMBS / (hashlib.sha1(f"{Path(path)}:{st.st_mtime_ns}:{st.st_size}:{width}".encode()).hexdigest()[:24] + ".webp")
+    return str(out) if out.exists() else ""
+
+
+def pic_thumbs(opts):
+    """Thumbnails for the picture chooser, made in parallel (Pillow decodes outside the GIL)."""
+    from concurrent.futures import ThreadPoolExecutor
+    paths = [p for p in (opts.get("paths") or [])[:300] if isinstance(p, str) and p.startswith("/")]
+    with ThreadPoolExecutor(6) as ex:
+        return {"ok": True, "thumbs": dict(zip(paths, ex.map(lambda p: thumb(p, 280), paths)))}
 
 
 def shell_dir():
@@ -726,7 +882,9 @@ def pic_files(opts):
                 except OSError:
                     continue
                 if st.st_size <= MAX_PIC and f.is_file():
-                    out.append({"path": str(f), "name": name, "time": st.st_mtime, "size": st.st_size, "own": r == GIF_DIR})
+                    out.append({"path": str(f), "name": name, "time": st.st_mtime, "size": st.st_size, "own": r == GIF_DIR,
+                                "still": f.suffix.lower() in (".png", ".jpg", ".jpeg"),
+                                "thumb": thumb_cached(f, 280) if f.suffix.lower() in (".png", ".jpg", ".jpeg") else ""})
     out.sort(key=lambda x: -x["time"])
     return {"ok": True, "files": out[:200]}
 
@@ -869,6 +1027,193 @@ def giphy_save(opts):
     return {"ok": True, "path": keep(data, f"giphy-{gid}{ext}"), "info": info}
 
 
+# --- colours in other apps ---------------------------------------------------------------
+# Caelestia recolours these apps from cli.json's "theme" (every one is on unless set to false). Orrery writes only them.
+CLI = CAEL / "cli.json"
+THEME_APPS = ["enableHypr", "enableTerm", "enableGtk", "enableQt", "enableDiscord", "enableSpicetify", "enableChromium",
+              "enableZed", "enableFuzzel", "enableBtop", "enableHtop", "enableNvtop", "enableCava", "enableWarp", "enablePandora"]
+ICON_KEYS = ("iconTheme", "iconThemeLight", "iconThemeDark")
+
+
+def cli_json():
+    try:
+        d = json.loads(CLI.read_text())
+    except FileNotFoundError:
+        return {}
+    if not isinstance(d, dict) or not isinstance(d.get("theme", {}), dict):
+        raise Bad("cli.json is not valid")
+    return d
+
+
+def read_colours(d=None):
+    t = (cli_json() if d is None else d).get("theme", {})
+    out = {k: t.get(k, True) if isinstance(t.get(k, True), bool) else True for k in THEME_APPS}
+    out.update({k: t.get(k, "") if isinstance(t.get(k, ""), str) else "" for k in ICON_KEYS})
+    return out
+
+
+def icon_themes():
+    """Icon themes (not cursor-only ones) that GTK and Qt can use."""
+    out = set()
+    for base in (HOME / ".icons", DATA_DIRS[0] / "icons", Path("/usr/share/icons"), Path("/usr/local/share/icons")):
+        for d in base.iterdir() if base.is_dir() else []:
+            try:
+                text = (d / "index.theme").read_text(errors="replace")
+            except OSError:
+                continue
+            m = re.search(r"^Directories\s*=\s*(.+)$", text, re.M)
+            if m and m[1].strip() and d.name not in ("hicolor", "locolor", "default"):
+                out.add(d.name)
+    return sorted(out, key=str.lower)
+
+
+def check_colours(c):
+    out = {k: bool(c.get(k, True)) for k in THEME_APPS}
+    for k in ICON_KEYS:
+        v = line(c.get(k, "") or "", k, 80)
+        if v and not re.fullmatch(r"[A-Za-z0-9 _.+-]{1,80}", v):
+            raise Bad("icon theme: invalid name")
+        out[k] = v
+    return out
+
+
+def put_colours(new):
+    d = cli_json()
+    t = d.setdefault("theme", {})
+    for k in THEME_APPS:
+        if new[k]:
+            t.pop(k, None)
+        else:
+            t[k] = False
+    for k in ICON_KEYS:
+        if new[k]:
+            t[k] = new[k]
+        else:
+            t.pop(k, None)
+    if not t:
+        d.pop("theme")
+    write(CLI, json.dumps(d, indent=4, ensure_ascii=False) + "\n")
+
+
+def recolour():
+    """Runs the current scheme again, so the apps take the colours now and not at the next wallpaper change."""
+    if DRY:
+        return
+    try:
+        sc = json.loads((Path(os.environ.get("XDG_STATE_HOME") or HOME / ".local/state") / "caelestia/scheme.json").read_text())
+    except (OSError, ValueError):
+        return
+    args = [x for k, f in (("name", "-n"), ("flavour", "-f"), ("mode", "-m"), ("variant", "-v"))
+            if isinstance(sc.get(k), str) and re.fullmatch(r"[a-z0-9_-]{1,40}", sc[k]) for x in (f, sc[k])]
+    run("caelestia", "scheme", "set", *args)
+
+
+# --- Spotify and spicetify -------------------------------------------------------------
+# Orrery only drives spicetify's own commands; it never edits Spotify's files itself.
+SPICE_CONF = CONF / "spicetify/config-xpui.ini"
+SPICE_SAVED = OWN / "spotify.json"      # the theme you had before Caelestia's colours
+
+
+def spicetify_bin():
+    for c in (os.environ.get("ORRERY_SPICETIFY"), shutil.which("spicetify"), str(HOME / ".spicetify/spicetify")):
+        if c and os.access(c, os.X_OK) and Path(c).is_file():
+            return c
+    return ""
+
+
+def spice_ini():
+    cp = configparser.RawConfigParser(strict=False, interpolation=None, inline_comment_prefixes=(";",))
+    cp.optionxform = str
+    try:
+        cp.read(SPICE_CONF, encoding="utf-8")
+    except (configparser.Error, UnicodeDecodeError):
+        pass
+    get = lambda sec, k: cp.get(sec, k, fallback="").strip()
+    return get
+
+
+def spice(*args):
+    exe = spicetify_bin()
+    if not exe:
+        raise Bad("spicetify is not installed")
+    r = run(exe, *args)
+    out = re.sub(r"\x1b\[[0-9;]*m", "", (r.stdout or "") + (r.stderr or "")).strip()
+    if r.returncode != 0 or re.search(r"^\s*error\b", out, re.I | re.M):
+        raise Bad("spicetify: " + (out.splitlines()[-1] if out else f"exit {r.returncode}")[:300])
+    return out
+
+
+def spotify_state():
+    exe = spicetify_bin()
+    get = spice_ini()
+    path = get("Setting", "spotify_path")
+    kind = "" if not path else "flatpak" if "flatpak" in path else "spotify-launcher" if "spotify-launcher" in path else "spotify"
+    xpui = Path(path) / "Apps/xpui/index.html" if path else None
+    try:
+        applied = bool(xpui and "spicetify" in xpui.read_text(errors="replace"))
+    except OSError:
+        applied = False
+    found = {}
+    for d in (HOME / ".spicetify/Extensions", CONF / "spicetify/Extensions", Path(exe).parent / "Extensions" if exe else None):
+        if d and d.is_dir():
+            for f in sorted(d.glob("*.js")):
+                found.setdefault(f.name, None)
+    on = [x for x in get("AdditionalOptions", "extensions").split("|") if x]
+    return {"spicetify": exe, "version": run(exe, "-v").stdout.strip()[:40] if exe else "", "spotify": path, "kind": kind,
+            "installed": bool(path) and Path(path).is_dir(), "applied": applied, "backup": bool(get("Backup", "version")),
+            "theme": get("Setting", "current_theme"), "scheme": get("Setting", "color_scheme"),
+            "caelestiaTheme": (CONF / "spicetify/Themes/caelestia/color.ini").is_file(),
+            "extensions": [{"name": n, "on": n in on} for n in sorted(set(found) | set(on))],
+            "watch": f"{exe} watch -s" if exe else ""}
+
+
+def spice_apply():
+    """apply, or backup and apply when Spotify was updated since the last backup (it puts its files back)."""
+    try:
+        return spice("apply")
+    except Bad as e:
+        if not re.search(r"backup|restore", str(e), re.I):
+            raise
+        spice("restore", "backup", "apply")
+
+
+def spotify(opts):
+    act = opts.get("action")
+    st = spotify_state()
+    if not st["spicetify"]:
+        raise Bad("spicetify is not installed")
+    if st["kind"] == "flatpak":
+        raise Bad("Spotify from Flatpak is not supported yet")
+    if act == "colours":
+        if opts.get("on"):
+            if not st["caelestiaTheme"]:
+                raise Bad("Caelestia has not made its Spotify theme yet: change wallpaper or scheme once, then try again")
+            if st["theme"] != "caelestia":
+                write(SPICE_SAVED, json.dumps({"theme": st["theme"], "scheme": st["scheme"]}) + "\n")
+            spice("config", "current_theme", "caelestia", "color_scheme", "caelestia", "replace_colors", "1")
+        else:
+            try:
+                old = json.loads(SPICE_SAVED.read_text())
+            except (OSError, ValueError):
+                old = {"theme": "", "scheme": ""}
+            theme, scheme = line(str(old.get("theme", "")), "theme", 80), line(str(old.get("scheme", "")), "scheme", 80)
+            spice("config", "current_theme", theme, "color_scheme", scheme)
+        spice_apply()
+    elif act == "apply":
+        spice_apply()
+    elif act == "restore":
+        spice("restore")
+    elif act == "extension":
+        name = str(opts.get("name", ""))
+        if not re.fullmatch(r"[A-Za-z0-9_.+-]{1,60}\.js", name):
+            raise Bad("unknown extension")
+        spice("config", "extensions", name if opts.get("on") else name + "-")
+        spice_apply()
+    else:
+        raise Bad("unknown action")
+    return {"ok": True, "spotify": spotify_state()}
+
+
 def monitors():
     try:
         return [{"name": m["name"], "description": m.get("description", "")}
@@ -895,7 +1240,7 @@ def can_hibernate():
 
 # --- backup / apply ---------------------------------------------------------------------
 TRACKED = {"hypr-user.lua": USER_LUA, "engine.lua": LUADIR / "engine.lua", "settings.lua": LUADIR / "settings.lua",
-           "mimeapps.list": MIMEAPPS, "config.json": CONFIG}
+           "mimeapps.list": MIMEAPPS, "config.json": CONFIG, "cli.json": CLI}
 
 
 def backup():
@@ -935,6 +1280,9 @@ def hypr_errors():
 def apply(cfg):
     power = check_power(cfg["power"]) if isinstance(cfg.get("power"), dict) else None
     shell = cfg.get("shell") if isinstance(cfg.get("shell"), dict) else None
+    colours = check_colours(cfg["colours"]) if isinstance(cfg.get("colours"), dict) else None
+    if colours and colours == read_colours():
+        colours = None          # nothing changed: cli.json is not rewritten
     cfg = validate(cfg)
     apps = desktop_apps()
     changes = {}
@@ -958,6 +1306,8 @@ def apply(cfg):
         (d / "shell-keys.json").write_text(json.dumps({k: [v is not MISSING, None if v is MISSING else v] for k, v in was.items()}))
     try:
         put_shell(changes)
+        if colours:
+            put_colours(colours)
         write(LUADIR / "engine.lua", (SHARE / "lua/engine.lua").read_text())
         write(LUADIR / "settings.lua", settings_lua(cfg, apps))
         write(USER_LUA, with_hook(USER_LUA.read_text() if USER_LUA.exists() else ""))
@@ -975,6 +1325,8 @@ def apply(cfg):
         restore(d)
         hypr_errors()
         raise Bad("Hyprland rejected the changes, previous settings restored: " + errors[:400])
+    if colours:
+        recolour()
     return {"ok": True, "config": {**cfg, "power": power, "shell": shell}, "backup": d.name}
 
 
@@ -1068,7 +1420,7 @@ def wall_state():
     have = [p for p in cur.iterdir() if p.is_file()] if cur.is_dir() else []
     return {"dir": str(cur), "exists": cur.is_dir(), "suggested": str(want), "files": len(have),
             "installed": all((cur / f).exists() for f, _ in WALLS.values()), "seen": listed is not None and (len(listed) > 0 or not have),
-            "running": listed is not None, "previews": {k: str(SHARE / "wallpapers" / f) for k, (f, _) in WALLS.items()}}
+            "running": listed is not None, "previews": {k: thumb(SHARE / "wallpapers" / f, 640) for k, (f, _) in WALLS.items()}}
 
 
 def refresh(target):
@@ -1124,6 +1476,160 @@ def use_wallpaper(opts):
     return {"ok": True}
 
 
+# --- shortcuts ---------------------------------------------------------------------------
+# Read-only. Caelestia's Lua binds show up in hyprctl as "function: 0x…", so the names come from its variables;
+# hyprctl only says which keys are really active.
+SHORTCUTS = [  # group, label, variable or literal keys, suffix
+    ("Shell", "Open the launcher", "kbLauncher", ""), ("Shell", "Shut down menu", "kbSession", ""),
+    ("Shell", "Sidebar and notifications", "kbShowSidebar", ""), ("Shell", "Clear the notifications", "kbClearNotifs", ""),
+    ("Shell", "Show every panel", "kbShowPanels", ""), ("Shell", "Lock the screen", "kbLock", ""),
+    ("Shell", "Bring the lock screen back after a crash", "kbRestoreLock", ""), ("Shell", "Sleep", "kbSleep", ""),
+    ("Shell", "Stop Caelestia", ["CTRL + SUPER + SHIFT + R"], ""), ("Shell", "Restart Caelestia", ["CTRL + SUPER + ALT + R"], ""),
+    ("Shell", "Test notification", ["SUPER + ALT + F12"], ""),
+    ("Areas", "Special workspace", "kbSpecialWs", ""), ("Areas", "Messages", "kbCommunicationWs", ""),
+    ("Areas", "Music", "kbMusicWs", ""), ("Areas", "To-do", "kbTodoWs", ""), ("Areas", "System monitor", "kbSystemMonitorWs", ""),
+    ("Workspaces", "Go to workspace", "kbGoToWs", "1…0"), ("Workspaces", "Move the window to workspace", "kbMoveWinToWs", "1…0"),
+    ("Workspaces", "Move the window there, staying here", "kbMoveWinToWsSilent", "1…0"),
+    ("Workspaces", "Go to workspace group", "kbGoToWsGroup", "1…0"), ("Workspaces", "Move the window to workspace group", "kbMoveWinToWsGroup", "1…0"),
+    ("Workspaces", "Next workspace", "kbNextWs", ""), ("Workspaces", "Previous workspace", "kbPrevWs", ""),
+    ("Workspaces", "Next workspace group", "kbNextWsGroup", ""), ("Workspaces", "Previous workspace group", "kbPrevWsGroup", ""),
+    ("Workspaces", "Move the window to the next workspace", "kbMoveWinToWsNext", ""),
+    ("Workspaces", "Move the window to the previous workspace", "kbMoveWinToWsPrev", ""),
+    ("Workspaces", "Move the window to the special workspace", "kbMoveWinToWsSpecial", ""),
+    ("Workspaces", "Take the window out of the special workspace", "kbMoveWinFromWsSpecial", ""),
+    ("Windows", "Close the window", "kbCloseWindow", ""), ("Windows", "Full screen", "kbWindowFullscreen", ""),
+    ("Windows", "Maximise", "kbWindowBorderedFullscreen", ""), ("Windows", "Floating or tiled", "kbToggleWindowFloating", ""),
+    ("Windows", "Focus the window on that side", ["SUPER + Left", "SUPER + Right", "SUPER + Up", "SUPER + Down"], ""),
+    ("Windows", "Move the window to that side", ["SUPER + SHIFT + Left", "SUPER + SHIFT + Right", "SUPER + SHIFT + Up", "SUPER + SHIFT + Down"], ""),
+    ("Windows", "Next window", "kbWindowCycleNext", ""), ("Windows", "Previous window", "kbWindowCyclePrev", ""),
+    ("Windows", "Narrower", "kbWindowDecreaseWidth", ""), ("Windows", "Wider", "kbWindowIncreaseWidth", ""),
+    ("Windows", "Shorter", "kbWindowDecreaseHeight", ""), ("Windows", "Taller", "kbWindowIncreaseHeight", ""),
+    ("Windows", "Move with the mouse", "kbMoveWindow", "", ["SUPER + mouse:272"]),
+    ("Windows", "Resize with the mouse", "kbResizeWindow", "", ["SUPER + mouse:273"]),
+    ("Windows", "Centre the window", "kbCenterWindow", ""), ("Windows", "Back to a normal size", "kbNormalizeWindow", ""),
+    ("Windows", "Picture in picture", "kbWindowPip", ""), ("Windows", "Keep on every workspace", "kbPinWindow", ""),
+    ("Windows", "Group windows", "kbToggleGroup", ""), ("Windows", "Take the window out of the group", "kbUngroup", ""),
+    ("Windows", "Lock the group", "kbGroupLockActive", ""), ("Windows", "Next window in the group", "kbWindowGroupCycleNext", ""),
+    ("Windows", "Previous window in the group", "kbWindowGroupCyclePrev", ""),
+    ("Apps", "Terminal", "kbTerminal", ""), ("Apps", "Web browser", "kbBrowser", ""), ("Apps", "Text editor", "kbEditor", ""),
+    ("Apps", "File manager", "kbFileExplorer", ""), ("Apps", "Audio settings", "kbAudioSettings", ""),
+    ("Tools", "Screenshot", "kbScreenshot", ""), ("Tools", "Screenshot of an area", "kbScreenshotRegion", ""),
+    ("Tools", "Screenshot, freezing the screen", "kbScreenshotFreeze", ""), ("Tools", "Record the screen", "kbRecord", ""),
+    ("Tools", "Record with sound", "kbRecordSound", ""), ("Tools", "Record an area", "kbRecordRegion", ""),
+    ("Tools", "Colour picker", "kbColorPicker", ""), ("Tools", "Clipboard history", "kbClipboard", ""),
+    ("Tools", "Delete from the clipboard history", "kbClipboardDel", ""), ("Tools", "Type the last copied text", "kbClipboardPasteLatest", ""),
+    ("Tools", "Emoji", "kbEmoji", ""),
+    ("Media", "Play or pause", "kbMediaToggle", "", ["XF86AudioPlay", "XF86AudioPause"]),
+    ("Media", "Next track", "kbMediaNext", "", ["XF86AudioNext"]), ("Media", "Previous track", "kbMediaPrev", "", ["XF86AudioPrev"]),
+    ("Media", "Stop", "kbMediaStop", "", ["XF86AudioStop"]), ("Media", "Mute", "kbVolumeMute", "", ["XF86AudioMute"]),
+    ("Media", "Volume up and down", ["XF86AudioRaiseVolume", "XF86AudioLowerVolume"], ""),
+    ("Media", "Mute the microphone", ["XF86AudioMicMute"], ""),
+    ("Media", "Brightness up and down", ["XF86MonBrightnessUp", "XF86MonBrightnessDown"], ""),
+]
+APP_VAR = {"kbTerminal": "terminal", "kbBrowser": "browser", "kbEditor": "editor", "kbFileExplorer": "fileExplorer",
+           "kbAudioSettings": "audioSettings"}
+AREA_VAR = {"special": "kbSpecialWs", "communication": "kbCommunicationWs", "music": "kbMusicWs", "todo": "kbTodoWs",
+            "sysmon": "kbSystemMonitorWs"}
+MODS = {"SUPER": 64, "WIN": 64, "LOGO": 64, "MOD4": 64, "SHIFT": 1, "CTRL": 4, "CONTROL": 4, "ALT": 8, "MOD1": 8}
+
+
+def lua_vars(text):
+    """Plain `name = "x"` and `name = { "x", "y" }` entries of a Lua table; anything computed is skipped."""
+    out = {}
+    # A comment starts at -- outside quotes ("gnome-text-editor --new-window" is not one)
+    code = "\n".join(re.sub(r'^((?:[^"\n]|"(?:[^"\\]|\\.)*")*?)--.*$', r"\1", l) for l in text.splitlines())
+    for m in re.finditer(r'^\s*([A-Za-z_]\w*)\s*=\s*("(?:[^"\\]|\\.)*"|\{[^{}]*\})\s*,?\s*$', code, re.M):
+        v = m[2]
+        out[m[1]] = re.findall(r'"((?:[^"\\]|\\.)*)"', v) if v.startswith("{") else v[1:-1]
+    return out
+
+
+def norm_key(k):
+    """'SUPER + SHIFT + s' -> (65, 's'), the way hyprctl reports it."""
+    parts = [p.strip() for p in str(k).split("+") if p.strip()]
+    if not parts:
+        return None
+    mask = 0
+    for p in parts[:-1]:
+        mask |= MODS.get(p.upper(), 0)
+    return mask, parts[-1].lower()
+
+
+def active_binds():
+    try:
+        binds = json.loads(run("hyprctl", "binds", "-j").stdout)
+    except ValueError:
+        return None
+    # non_consuming binds are listeners (Caelestia watching Caps Lock), not shortcuts
+    return {(b.get("modmask", 0), str(b.get("key", "")).lower()): b for b in binds
+            if isinstance(b, dict) and b.get("submap", "") == "" and not b.get("non_consuming")}
+
+
+def shortcuts(_=None):
+    v = {}
+    for f in (CONF / "hypr/variables.lua", CAEL / "hypr-vars.lua"):
+        try:
+            v.update(lua_vars(f.read_text()))
+        except OSError:
+            pass
+    cfg, _ = load()
+    apps = desktop_apps()
+    live = active_binds()
+    rows, taken = [], {}
+    def add(group, label, keys, suffix="", sub="", source="caelestia"):
+        keys = [k for k in keys if isinstance(k, str) and k.strip()]
+        shown = [f"{k} + {suffix}" if suffix else k for k in keys]
+        checks = [norm_key(f"{k} + 1") if suffix else norm_key(k) for k in keys]
+        on = None if live is None else any(c in live for c in checks if c)
+        for c in checks:
+            if c:
+                taken.setdefault(c, []).append(label)
+        rows.append({"group": group, "label": label, "keys": shown, "sub": sub, "source": source, "active": on})
+    # What Orrery replaced
+    areas = {sp["id"]: a for a in cfg.get("areas", []) if a.get("enabled") for sp in a.get("spaces", [])}
+    overridden = {AREA_VAR[i] for i in areas if i in AREA_VAR}
+    for a in cfg.get("areas", []):
+        if a.get("enabled") and a.get("key"):
+            names = ", ".join(p.get("name") or p.get("class", "") for sp in a.get("spaces", []) for p in sp.get("apps", []))
+            add("Areas", a["name"], [a["key"]], sub=names, source="orrery")
+    if cfg.get("keyboard", {}).get("managed") and cfg["keyboard"].get("switchKey"):
+        add("Windows", "Switch keyboard layout", [cfg["keyboard"]["switchKey"]], source="orrery")
+    chosen = {ROLES.get(r): apps.get(cfg["apps"].get(r, ""), {}).get("name", "") for r in ROLES if cfg.get("apps", {}).get(r)}
+    for item in SHORTCUTS:
+        group, label, src, suffix = item[:4]
+        if isinstance(src, str) and src in overridden:
+            continue
+        keys = (v.get(src) if isinstance(src, str) else src) or []
+        keys = [keys] if isinstance(keys, str) else list(keys)
+        keys += item[4] if len(item) > 4 else []
+        sub = (chosen.get(src) or (v.get(APP_VAR[src], "") if src in APP_VAR else "")) if isinstance(src, str) else ""
+        add(group, label, keys, suffix, sub)
+        if isinstance(src, str) and src in APP_VAR and not chosen.get(src) and sub and not shutil.which(sub.split()[0]):
+            rows[-1]["missing"] = True        # Caelestia's default app is not installed: the key does nothing
+    # Your own binds in hypr-user.lua (outside Orrery's block)
+    try:
+        mine = strip_hook(USER_LUA.read_text())
+    except OSError:
+        mine = ""
+    for line_ in mine.splitlines():
+        code = line_.split("--", 1)[0]
+        m = re.search(r'hl\.bind\(\s*"([^"]+)"\s*,\s*(.+?)\)?\s*$', code)
+        if m:
+            what = re.search(r'exec_cmd\(\s*"([^"]+)"', m[2])
+            add("Yours", what[1] if what else m[2].strip()[:60], [m[1]], source="user")
+    # Active keys nobody here explains: other configuration (HyprMod, hand-made files)
+    if live is not None:
+        known = set(taken)
+        for (mask, key), b in sorted(live.items(), key=lambda x: (x[0][1], x[0][0])):
+            if (mask, key) not in known and not (mask, key[:-1]) in known and not re.fullmatch(r"[0-9]", key):
+                mods = [n for n, bit in (("SUPER", 64), ("CTRL", 4), ("ALT", 8), ("SHIFT", 1)) if mask & bit]
+                add("Other", "From other configuration", [" + ".join(mods + [b.get("key", key)])], source="other")
+    twice = {c for c, who in taken.items() if len(set(who)) > 1}
+    for r in rows:
+        r["twice"] = sorted({w for k in r["keys"] for c in [norm_key(k.replace(" + 1…0", " + 1"))] if c in twice for w in taken[c]} - {r["label"]})
+    return {"ok": True, "shortcuts": rows, "live": live is not None}
+
+
 # --- state -----------------------------------------------------------------------------
 def windows():
     try:
@@ -1159,6 +1665,29 @@ def conflicts():
     return found
 
 
+def current_wallpaper():
+    try:
+        p = (Path(os.environ.get("XDG_STATE_HOME") or HOME / ".local/state") / "caelestia/wallpaper/path.txt").read_text().strip()
+    except OSError:
+        return ""
+    return p if p.startswith("/") and Path(p).is_file() else ""
+
+
+def display_manager():
+    try:
+        name = Path(os.readlink("/etc/systemd/system/display-manager.service")).name
+    except OSError:
+        return ""
+    return name.removesuffix(".service")
+
+
+def previous_dm():
+    try:
+        return Path("/etc/orrery/display-manager.before-orrery").read_text().strip().removesuffix(".service")[:60]
+    except OSError:
+        return ""
+
+
 def state():
     cfg, saved = load()
     apps = desktop_apps()
@@ -1178,8 +1707,19 @@ def state():
         cfg["shell"] = read_shell()
     except (Bad, ValueError):
         cfg["shell"] = None
+    try:
+        cfg["colours"] = read_colours()
+    except (Bad, ValueError):
+        cfg["colours"] = None
     helper = "/usr/lib/orrery/orrery-helper"
-    walls = wall_state()
+    # The slow parts wait on other programs: run them side by side
+    from concurrent.futures import ThreadPoolExecutor
+    ex = ThreadPoolExecutor(8)
+    later = {k: ex.submit(f) for k, f in (("walls", wall_state), ("hibernate", can_hibernate), ("windows", windows),
+                                         ("monitors", monitors), ("spotify", spotify_state), ("layouts", xkb_layouts),
+                                         ("icons", icon_themes))}
+    table = mimeapps_defaults()
+    walls = later["walls"].result()
     greeter = ""
     try:
         m = re.search(r'^\s*command\s*=\s*"([^"]+)"', Path("/etc/greetd/config.toml").read_text(), re.M)
@@ -1188,12 +1728,19 @@ def state():
         pass
     return {
         "config": cfg, "saved": saved, "apps": sorted(apps.values(), key=lambda a: a["name"].lower()),
-        "roles": roles_for(apps), "defaults": {r: system_default(r) for r in ALL_ROLES}, "layouts": xkb_layouts(), "windows": windows(), "conflicts": conflicts(),
+        "roles": roles_for(apps), "defaults": {r: system_default(r, apps, table) for r in ALL_ROLES}, "layouts": later["layouts"].result(),
+        "windows": later["windows"].result(), "conflicts": conflicts(),
         "active": USER_LUA.exists() and BEGIN in USER_LUA.read_text(),
         "walls": walls,
-        "power": {"defaults": read_power({}), "hibernate": can_hibernate(), "battery": has_battery()},
-        "shell": {"defaults": read_shell({}), "monitors": monitors()},
-        "pics": {"defaults": {k: resolve_pic(v) for k, (_, v) in GIFS.items()}, "dir": str(GIF_DIR), "giphy": bool(giphy_key()),
+        "power": {"defaults": read_power({}), "hibernate": later["hibernate"].result(), "battery": has_battery()},
+        "shell": {"defaults": read_shell({}), "monitors": later["monitors"].result()},
+        "spotify": later["spotify"].result(),
+        "colours": {"icons": later["icons"].result()},
+        "pics": {"defaults": {k: thumb(resolve_pic(v), 400) if resolve_pic(v) else "" for k, (_, v) in GIFS.items()},
+                 "dir": str(GIF_DIR), "giphy": bool(giphy_key()),
+                 "wallpaper": thumb(current_wallpaper(), 900) if current_wallpaper() else "",
+                 "thumbs": {v: thumb(resolve_pic(v), 400) for v in (cfg["shell"] or {}).get("gifs", {}).values()
+                            if isinstance(v, str) and v.startswith("/")},
                  "defaultsOk": {k: Path(resolve_pic(v) or "/nonexistent").is_file() for k, (_, v) in GIFS.items()},
                  "originals": {k: str(p) if p.is_file() else "" for k, p in originals().items()}},
         "canUndo": BACKUPS.is_dir() and any(BACKUPS.iterdir()),
@@ -1203,23 +1750,34 @@ def state():
                           "max": int((LED / "max_brightness").read_text()) if LED else 0,
                           "unit": next((u for u in ("orrery-kbd-backlight.service", "kbd-backlight-on.service")
                                         if os.path.exists(f"/etc/systemd/system/{u}")), "")},
-            "login": {"greetd": os.path.exists("/etc/greetd/config.toml"), "command": greeter,
+            "login": {"greetd": os.path.exists("/etc/greetd/config.toml"), "command": greeter, "dm": display_manager(),
+                      "greetdInstalled": shutil.which("greetd") is not None or os.path.exists("/usr/bin/greetd"),
+                      "previousDm": previous_dm(),
                       "packages": {p: shutil.which(b) is not None for p, b in
                                    (("cage", "cage"), ("quickshell-greetd", "quickshell-greetd-launcher"))}}}}
 
 
 def check():
     out = []
-    def add(i, ok, detail=""):
-        out.append({"id": i, "ok": ok, "detail": detail})
+    def add(i, ok, detail="", fix="", note=""):
+        out.append({"id": i, "ok": ok, "detail": detail, "fix": fix, "note": note})
     qs = run("quickshell", "--private-check-compat")
-    add("quickshell", shutil.which("quickshell") is not None and not re.search("built against|rebuil", qs.stdout + qs.stderr))
+    m = re.search(r"built against Qt ([0-9.]+) but the system has updated to Qt ([0-9.]+)", qs.stdout + qs.stderr)
+    stale = m is not None or bool(re.search("built against|rebuil", qs.stdout + qs.stderr))
+    # AUR packages are not rebuilt by pacman. aur/ avoids repository packages that claim to be quickshell-git (noctalia-qs)
+    aur = [p for p in ("quickshell-git", "caelestia-shell") if run("pacman", "-Qmq", p).returncode == 0]
+    add("quickshell", shutil.which("quickshell") is not None and not stale,
+        "Qt was updated: Quickshell must be rebuilt, or it may crash. Then log out and in again." if stale else "",
+        "paru -S --rebuild " + " ".join(f"aur/{p}" for p in aur) if stale and aur else "", f"Qt {m[1]} → {m[2]}" if m else "")
     add("noctaliaqs", run("pacman", "-Qq", "noctalia-qs").returncode != 0)
     e = run("hyprctl", "configerrors").stdout.strip()
     add("hyprland", e.lower() in ("", "no errors"), e[:300])
     add("shell", "/quickshell/caelestia/shell.qml" in run("qs", "list", "--all").stdout)
     add("hook", USER_LUA.exists() and BEGIN in USER_LUA.read_text())
     add("conflicts", not conflicts(), ", ".join(conflicts()))
+    sp = spotify_state()
+    if sp["spicetify"] and sp["installed"] and sp["backup"]:
+        add("spotify", sp["applied"], "Spotify was updated and lost spicetify: apply it again in Default apps")
     return {"checks": out}
 
 
@@ -1230,6 +1788,9 @@ def main():
                  "pic-info": pic_info, "pic-files": pic_files, "pic-import": pic_import,
                  "giphy-key": set_giphy_key, "giphy-search": giphy_search, "giphy-save": giphy_save}
         takes["pic-originals"] = lambda _: back_up_originals()
+        takes["spotify"] = spotify
+        takes["pic-thumbs"] = pic_thumbs
+        takes["shortcuts"] = shortcuts
         if cmd in takes:
             res = takes[cmd](json.load(sys.stdin))
         else:

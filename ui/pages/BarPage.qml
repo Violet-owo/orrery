@@ -146,6 +146,7 @@ Page {
                 onToggled: v => Backend.mutate(c => c.shell.osd.enableMicrophone = v)
             }
             SelectTile {
+                last: true
                 dim: !body.s.osd.enabled
                 icon: "timer"
                 label: I18n.tr("Stays on screen for")
@@ -154,17 +155,61 @@ Page {
                 current: body.s.osd.hideDelay
                 onPicked: v => Backend.mutate(c => c.shell.osd.hideDelay = v)
             }
+
+            Head { text: I18n.tr("Panels") }
             Tile {
+                first: true
+                icon: "partly_cloudy_day"
+                label: I18n.tr("Weather city")
+                sub: body.s.panels.weather ? "" : I18n.tr("Empty: found from your connection")
+                Field {
+                    implicitWidth: 240
+                    placeholder: I18n.tr("For example: London")
+                    value: body.s.panels.weather
+                    onCommit: v => Backend.mutate(c => c.shell.panels.weather = v.trim())
+                }
+            }
+            ToggleTile {
+                icon: "touch_app"
+                label: I18n.tr("Clicking a notification runs its action")
+                sub: I18n.tr("For example opens the chat of a message")
+                checked: body.s.panels.notifClick
+                onToggled: v => Backend.mutate(c => c.shell.panels.notifClick = v)
+            }
+            SelectTile {
+                icon: "fullscreen"
+                label: I18n.tr("Notifications over full screen apps stay for")
+                readonly property var steps: [1000, 2000, 3000, 5000, 8000, 10000]
+                items: (steps.includes(body.s.panels.notifFullscreen) ? steps : steps.concat([body.s.panels.notifFullscreen]).sort((a, b) => a - b))
+                    .map(v => ({ value: v, label: page.seconds(v) }))
+                current: body.s.panels.notifFullscreen
+                onPicked: v => Backend.mutate(c => c.shell.panels.notifFullscreen = v)
+            }
+            SelectTile {
+                last: true
+                icon: "power_settings_new"
+                label: I18n.tr("Third button of the shut down menu")
+                sub: !Backend.st.power.hibernate && body.s.panels.sessionButton === "hibernate" ? I18n.tr("This computer cannot hibernate: that button does nothing") : ""
+                items: [{ value: "hibernate", label: I18n.tr("Hibernate") }, { value: "suspend", label: I18n.tr("Suspend") }, { value: "lock", label: I18n.tr("Lock") }]
+                    .concat(body.s.panels.sessionButton === "custom" ? [{ value: "custom", label: I18n.tr("Your own command") }] : [])
+                current: body.s.panels.sessionButton
+                onPicked: v => Backend.mutate(c => c.shell.panels.sessionButton = v)
+            }
+
+            Tile {
+                Layout.topMargin: 12
+                first: true
                 last: true
                 icon: "restart_alt"
                 label: I18n.tr("Caelestia's defaults")
-                sub: I18n.tr("Puts the bar and the indicators back as they come")
+                sub: I18n.tr("Puts the bar, the indicators and the panels back as they come")
                 Btn {
                     text: I18n.tr("Restore")
                     enabled: !Backend.busy
                     onClicked: Backend.mutate(c => {
                         c.shell.bar = JSON.parse(JSON.stringify(page.info.defaults.bar));
                         c.shell.osd = JSON.parse(JSON.stringify(page.info.defaults.osd));
+                        c.shell.panels = JSON.parse(JSON.stringify(page.info.defaults.panels));
                     })
                 }
             }

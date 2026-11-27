@@ -21,6 +21,8 @@ GridView {
     Keys.onEscapePressed: close()
     Keys.onUpPressed: e => { if (currentIndex < Math.floor(width / cellWidth)) leaveTop(); else e.accepted = false; }
 
+    Scroller { parent: grid; target: grid }
+
     delegate: Item {
         id: cell
         required property int index
@@ -76,7 +78,7 @@ GridView {
             OrreryLoader {
                 anchors.centerIn: parent
                 size: Math.min(56, card.width * 0.4)
-                visible: (grid.animateAll ? (anim.item?.status ?? AnimatedImage.Loading) : still.status) === Image.Loading
+                visible: cell.preview === "" || (grid.animateAll ? (anim.item?.status ?? AnimatedImage.Loading) : still.status) === Image.Loading
             }
             Ico {
                 anchors.centerIn: parent

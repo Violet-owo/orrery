@@ -21,6 +21,7 @@ Page {
     }
 
     readonly property var gifs: Backend.cfg.shell?.gifs ?? null
+    readonly property var desk: Backend.cfg.shell?.desktop ?? null
     readonly property var slots: [
         { id: "media", name: "Media", sub: "Dashboard, moves to the music", animated: true },
         { id: "session", name: "Shut down menu", sub: "Between the buttons", animated: true },
@@ -29,7 +30,7 @@ Page {
     function picUrl(slot: string): string {
         const v = gifs?.[slot] ?? "";
         if (!v) return "";
-        const p = v === Backend.st.shell.defaults.gifs[slot] ? Backend.st.pics.defaults[slot] : v.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, Quickshell.env("HOME"));
+        const p = v === Backend.st.shell.defaults.gifs[slot] ? Backend.st.pics.defaults[slot] : Backend.st.pics.thumbs?.[v] ?? v.replace(/^(~|\$HOME|\$\{HOME\})(?=\/|$)/, Quickshell.env("HOME"));
         return p ? `file://${p}` : "";
     }
 
@@ -148,6 +149,163 @@ Page {
         text: I18n.tr("Caelestia looks in a folder that does not exist: on this system your pictures are in %1.").replace("%1", page.w.suggested ?? "")
     }
 
+    // --- On the desktop: Caelestia's clock and audio bars over the wallpaper
+    Head { text: I18n.tr("On the desktop"); visible: !!page.desk }
+    Rectangle {
+        id: preview
+        visible: !!page.desk
+        Layout.fillWidth: true
+        Layout.bottomMargin: 6
+        implicitHeight: width * 9 / 16 * 0.62
+        radius: Theme.rLg
+        color: Theme.container
+        clip: true
+        Image {
+            anchors.fill: parent
+            source: Backend.st.pics.wallpaper ? `file://${Backend.st.pics.wallpaper}` : ""
+            sourceSize.width: 900
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+        }
+        // Bars like Caelestia's visualiser, still: a picture of where they go
+        Row {
+            visible: page.desk?.vis ?? false
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 14 }
+            spacing: 3 * (page.desk?.visSpacing ?? 1)
+            Repeater {
+                model: 40
+                Rectangle {
+                    required property int index
+                    width: (preview.width - 28) / 40 - 3 * (page.desk?.visSpacing ?? 1)
+                    height: 12 + 40 * Math.abs(Math.sin(index * 0.55) * Math.cos(index * 0.17))
+                    anchors.bottom: parent.bottom
+                    radius: width / 2 * (page.desk?.visRounding ?? 1)
+                    color: Qt.alpha(Theme.primary, 0.75)
+                }
+            }
+        }
+        Rectangle {
+            id: clockBox
+            visible: page.desk?.clock ?? false
+            readonly property var at: (page.desk?.clockPosition ?? "bottom-right").split("-")
+            x: at[1] === "left" ? 18 : at[1] === "center" ? (preview.width - width) / 2 : preview.width - width - 18
+            y: at[0] === "top" ? 18 : at[0] === "middle" ? (preview.height - height) / 2 : preview.height - height - 18
+            width: clockCol.implicitWidth + 28
+            height: clockCol.implicitHeight + 18
+            radius: Theme.rMd
+            color: page.desk?.clockBg ? Qt.alpha(Theme.container, page.desk.clockBgOpacity) : "transparent"
+            Behavior on x { Anim {} }
+            Behavior on y { Anim {} }
+            Column {
+                id: clockCol
+                anchors.centerIn: parent
+                scale: page.desk?.clockScale ?? 1
+                Txt {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Qt.formatTime(new Date(), "hh:mm")
+                    size: 34
+                    weight: Font.Bold
+                    color: page.desk?.clockInvert ? Theme.fg : Theme.primary
+                    style: page.desk?.clockShadow ? Text.Raised : Text.Normal
+                    styleColor: Qt.alpha("black", page.desk?.clockShadowOpacity ?? 0.7)
+                }
+                Txt {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: Qt.formatDate(new Date(), "dddd d MMMM")
+                    size: 12
+                    color: page.desk?.clockInvert ? Theme.fgVariant : Theme.fg
+                }
+            }
+        }
+    }
+    ToggleTile {
+        first: true
+        visible: !!page.desk
+        icon: "schedule"
+        label: I18n.tr("Clock on the desktop")
+        checked: page.desk?.clock ?? false
+        onToggled: v => Backend.mutate(c => c.shell.desktop.clock = v)
+    }
+    SelectTile {
+        visible: !!page.desk
+        dim: !page.desk?.clock
+        icon: "open_with"
+        label: I18n.tr("Position")
+        items: ["top-left", "top-center", "top-right", "middle-left", "middle-center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
+            .map(v => ({ value: v, label: I18n.tr(v.split("-").map(w => w[0].toUpperCase() + w.slice(1)).join(" ")) }))
+        current: page.desk?.clockPosition
+        onPicked: v => Backend.mutate(c => c.shell.desktop.clockPosition = v)
+    }
+    SliderTile {
+        visible: !!page.desk
+        dim: !page.desk?.clock
+        icon: "format_size"
+        label: I18n.tr("Size")
+        from: 0.5; to: 3; step: 0.1; suffix: "×"
+        value: page.desk?.clockScale ?? 1
+        onMoved: v => Backend.mutate(c => c.shell.desktop.clockScale = v)
+    }
+    ToggleTile {
+        visible: !!page.desk
+        dim: !page.desk?.clock
+        icon: "invert_colors"
+        label: I18n.tr("Inverted colours")
+        checked: page.desk?.clockInvert ?? false
+        onToggled: v => Backend.mutate(c => c.shell.desktop.clockInvert = v)
+    }
+    ToggleTile {
+        visible: !!page.desk
+        dim: !page.desk?.clock
+        icon: "rectangle"
+        label: I18n.tr("Background behind the clock")
+        sub: I18n.tr("Blurred, like Caelestia's panels")
+        checked: page.desk?.clockBg ?? false
+        onToggled: v => Backend.mutate(c => c.shell.desktop.clockBg = v)
+    }
+    ToggleTile {
+        visible: !!page.desk
+        dim: !page.desk?.clock
+        icon: "shadow"
+        label: I18n.tr("Shadow")
+        checked: page.desk?.clockShadow ?? true
+        onToggled: v => Backend.mutate(c => c.shell.desktop.clockShadow = v)
+    }
+    ToggleTile {
+        visible: !!page.desk
+        icon: "graphic_eq"
+        label: I18n.tr("Audio bars on the desktop")
+        sub: I18n.tr("Move with the music playing")
+        checked: page.desk?.vis ?? false
+        onToggled: v => Backend.mutate(c => c.shell.desktop.vis = v)
+    }
+    ToggleTile {
+        visible: !!page.desk
+        dim: !page.desk?.vis
+        icon: "visibility_off"
+        label: I18n.tr("Hide them when nothing plays")
+        checked: page.desk?.visAutoHide ?? true
+        onToggled: v => Backend.mutate(c => c.shell.desktop.visAutoHide = v)
+    }
+    SliderTile {
+        visible: !!page.desk
+        dim: !page.desk?.vis
+        icon: "rounded_corner"
+        label: I18n.tr("Bar rounding")
+        from: 0; to: 2; step: 0.1; suffix: "×"
+        value: page.desk?.visRounding ?? 1
+        onMoved: v => Backend.mutate(c => c.shell.desktop.visRounding = v)
+    }
+    SliderTile {
+        visible: !!page.desk
+        last: true
+        dim: !page.desk?.vis
+        icon: "space_bar"
+        label: I18n.tr("Bar spacing")
+        from: 0; to: 4; step: 0.1; suffix: "×"
+        value: page.desk?.visSpacing ?? 1
+        onMoved: v => Backend.mutate(c => c.shell.desktop.visSpacing = v)
+    }
+
     Head { text: I18n.tr("GIFs and pictures") }
     Txt { Layout.leftMargin: 8; Layout.bottomMargin: 6; text: I18n.tr("What Caelestia shows in its panels. Choose one from your files or from GIPHY: it changes live once applied."); size: 12; color: Theme.fgVariant; wrapMode: Text.WordWrap; Layout.fillWidth: true }
     Note {
@@ -192,7 +350,7 @@ Page {
                         source: slot.modelData.animated ? page.picUrl(slot.modelData.id) : ""
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
-                        playing: visible
+                        playing: visible && Ui.awake
                         // Caelestia: media follows the beat (shown at 120 BPM), the menu has a fixed speed
                         speed: slot.modelData.id === "media" ? 120 / (page.gifs?.mediaSpeed || 300) : (page.gifs?.sessionSpeed ?? 0.7)
                     }

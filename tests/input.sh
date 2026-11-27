@@ -74,6 +74,25 @@ s = s.replace("            Help { id: help }", '''            TestCase {
                     stack.currentItem.setShown("X-1", false); check("bar: hide on a screen", Backend.cfg.shell.bar.excludedScreens.includes("X-1"));
                     Backend.discard(); wait(200); check("bar: discard", !Backend.dirty);
                     key(Qt.Key_0, Qt.ControlModifier); check("ctrl+0 opens health", Ui.page === 9);
+                    // Dragging a scroll bar inside a list: only the bar moves the list, no touch-like swipe on top
+                    Ui.gifPicker.show("Test", p => {}); wait(2500);
+                    const g = Ui.gifPicker.grid; let sc = null;
+                    for (const c of g.children) if (c.ratio !== undefined) sc = c;
+                    if (sc && sc.needed) {
+                        const h = sc.height, y0 = g.contentY;
+                        // Small steps, like a hand: that is when a list starts to take a drag for itself
+                        mousePress(sc, 7, 10);
+                        let back = false, last = g.contentY;
+                        for (let y = 12; y <= h / 2; y += 4) { mouseMove(sc, 7, y, 8); if (g.contentY < last - 1) back = true; last = g.contentY; }
+                        const mid = g.contentY;
+                        check("scroll bar: list does not take the drag", !g.interactive && !back);
+                        for (let y = h / 2; y <= h - 2; y += 4) { mouseMove(sc, 7, y, 8); if (g.contentY < last - 1) back = true; last = g.contentY; }
+                        wait(150); const end = g.contentY; mouseRelease(sc, 7, h - 2); wait(200);
+                        check("scroll bar: the list never jumps back", !back);
+                        check("scroll bar drags the list down: " + y0 + " " + mid + " " + end, mid > y0 && end > mid && Math.abs(end - (g.contentHeight - g.height + g.originY)) < 40);
+                        check("scroll bar: list is interactive again", g.interactive);
+                    } else console.log("INPUT info no scroll bar needed in the picker");
+                    Ui.gifPicker.close(); wait(800);
                     for (let i = 0; i < Ui.nav.length; i++) { Ui.go(i); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("page " + i + " reachable by keyboard", i === 9 || Nav.current?.navigable === true && !Nav.inside(Nav.current, side)); }
                     console.log("INPUT DONE failures=" + bad);
                     last.start(); // outside the nested test event loop

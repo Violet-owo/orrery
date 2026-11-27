@@ -10,6 +10,7 @@ Rectangle {
     property real iconRotation: 0
     property bool windowButton
     property bool cascade // set on buttons that stand on their own in a page
+    property bool loading // working: Orrery's logo turns in place of the icon, clicks are ignored
     signal clicked
 
     readonly property color fg: kind === "filled" ? Theme.fgPrimary : kind === "danger" ? Theme.fgError : kind === "text" ? Theme.primary : Theme.fgSecondary
@@ -21,7 +22,7 @@ Rectangle {
     topRightRadius: radius
     bottomLeftRadius: radius
     bottomRightRadius: radius
-    property real shade: enabled ? 1 : 0.45
+    property real shade: enabled || loading ? 1 : 0.45
     opacity: shade * enter.p
     transform: Translate { y: (1 - enter.p) * 34 }
     Enter { id: enter; active: root.cascade }
@@ -38,8 +39,14 @@ Rectangle {
         id: content
         anchors.centerIn: parent
         spacing: 8
+        OrreryLoader {
+            visible: root.loading
+            size: 24
+            tint: root.fg
+            ring: Qt.alpha(root.fg, 0.4)
+        }
         Ico {
-            visible: root.icon !== ""
+            visible: root.icon !== "" && !root.loading
             text: root.icon
             size: 20
             fill: hover.containsMouse ? 1 : 0
@@ -49,5 +56,5 @@ Rectangle {
         }
         Txt { visible: root.text !== ""; text: root.text; color: root.fg; weight: Font.Medium }
     }
-    Hover { id: hover; tint: root.fg; windowButton: root.windowButton; onClicked: root.clicked() }
+    Hover { id: hover; enabled: !root.loading; tint: root.fg; windowButton: root.windowButton; onClicked: root.clicked() }
 }

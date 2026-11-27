@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.core
 import qs.controls
 
@@ -8,7 +9,7 @@ Page {
     property var checks: []
     readonly property var names: ({
         quickshell: "Quickshell works with the installed Qt", noctaliaqs: "No incompatible Quickshell fork", hyprland: "Hyprland configuration has no errors",
-        shell: "Caelestia is running", hook: "Orrery is active", conflicts: "No conflicts with hand-made configuration" })
+        shell: "Caelestia is running", hook: "Orrery is active", conflicts: "No conflicts with hand-made configuration", spotify: "Spotify still has spicetify" })
     function run(): void { Backend.call("check", null, r => checks = r.checks ?? []); }
 
     title: I18n.tr("Health")
@@ -25,7 +26,13 @@ Page {
             last: index === page.checks.length - 1
             icon: k.ok ? "check_circle" : "error"
             label: I18n.tr(page.names[k.id] ?? k.id ?? "")
-            sub: k.ok ? "" : (k.detail ?? "")
+            sub: k.ok ? "" : [k.note, I18n.tr(k.detail ?? ""), k.fix].filter(x => x).join("\n")
+            Btn {
+                visible: !checkTile.k.ok && !!checkTile.k.fix
+                icon: "content_copy"
+                text: I18n.tr("Copy command")
+                onClicked: { Quickshell.clipboardText = checkTile.k.fix; Backend.say(I18n.tr("Command copied: paste it in a terminal"), false); }
+            }
             Txt { text: checkTile.k.ok ? "OK" : I18n.tr("Check"); color: checkTile.k.ok ? Theme.success : Theme.error; weight: Font.Medium }
         }
     }
