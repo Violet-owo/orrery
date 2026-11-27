@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1beta1
 
 - Updates, in *Health*: choose the stable or the beta channel, check for a new version (by itself at most once a day,
   or with a button; it can be turned off) and install it with your password. Only Orrery's own package is installed,
