@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0beta4
 
 - Scroll bars in the pages, the shortcuts, the picture chooser and every list: thin, shown while scrolling, wider under the pointer, draggable
 - Desktop shortcuts (`Ctrl+K`, or *Keyboard*): every key of Caelestia, Orrery and your own hypr-user.lua, grouped
