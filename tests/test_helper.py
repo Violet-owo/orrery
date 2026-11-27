@@ -54,6 +54,28 @@ class T(unittest.TestCase):
         for bad in ("x", "10", "1;reboot", ""):
             self.assertNotEqual(self.run_("backlight", bad).returncode, 0)
 
+    def test_display_manager(self):
+        link = self.r / "etc/systemd/system/display-manager.service"
+        (self.r / "usr/lib/systemd/system").mkdir(parents=True)
+        (self.r / "usr/lib/systemd/system/sddm.service").touch()
+        link.symlink_to("/usr/lib/systemd/system/sddm.service")
+        (self.r / "etc/greetd/config.toml").unlink()
+        self.assertNotEqual(self.run_("dm-greetd").returncode, 0)            # greetd missing: nothing changes
+        self.assertEqual(os.readlink(link), "/usr/lib/systemd/system/sddm.service")
+        (self.r / "usr/bin/greetd").touch()
+        r = self.run_("dm-greetd")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("systemctl disable sddm.service", r.stdout)
+        self.assertIn("systemctl enable greetd.service", r.stdout)
+        self.assertNotIn("stop", r.stdout)                                  # the running session is never cut
+        self.assertIn('command = "agreety --cmd Hyprland"', self.toml())     # a working login until Orrery's is on
+        self.assertEqual(self.run_("dm-greetd").returncode, 0)               # already greetd: no-op
+        self.assertEqual((self.r / "etc/orrery/display-manager.before-orrery").read_text(), "sddm.service\n")
+        r = self.run_("dm-restore")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.readlink(link), "/usr/lib/systemd/system/sddm.service")
+        self.assertNotEqual(self.run_("dm-restore").returncode, 0)
+
     def test_unknown(self):
         for a in ((), ("rm",), ("backlight",), ("login-disable", "x")):
             self.assertNotEqual(self.run_(*a).returncode, 0)

@@ -15,7 +15,7 @@ s = s.replace("ShellRoot {", '''ShellRoot {
         interval: 900; repeat: true; running: Backend.ready
         onTriggered: {
             n++;
-            if (n === 1) { Ui.go(4); Ui.area = 1; }
+            if (n === 1) { Ui.go(5); Ui.area = 1; }
             if (n === 2) Backend.mutate(c => { c.areas[1].enabled = true; c.areas[1].name = "Chat"; c.areas[1].spaces.push({ id: "smoke", apps: [{ name: "Foo", class: "foo", command: "foo --x", autostart: true }] }); c.keyboard.managed = true; });
             if (n === 3) console.log("SMOKE dirty", Backend.dirty);
             if (n === 4) Ui.pick("Pick", Backend.st.apps.map(a => ({ value: a.id, label: a.name, sub: a.command })), "", v => {});

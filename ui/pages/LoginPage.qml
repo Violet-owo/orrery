@@ -23,6 +23,39 @@ Page {
         label: page.mine ? I18n.tr("Login managed by Orrery") : I18n.tr("Not managed by Orrery")
         sub: page.login.greetd ? page.login.command : I18n.tr("greetd is not configured")
     }
+    // Only one login manager runs at a time: Orrery's login needs greetd
+    Tile {
+        id: dmTile
+        readonly property bool onGreetd: page.login.dm === "greetd"
+        icon: onGreetd ? "how_to_reg" : "swap_horiz"
+        label: page.login.dm ? I18n.tr("Login manager: %1").replace("%1", page.login.dm) : I18n.tr("No login manager found")
+        sub: onGreetd ? (page.login.previousDm ? I18n.tr("Switched from %1 by Orrery.").replace("%1", page.login.previousDm) : "")
+             : page.login.greetdInstalled ? I18n.tr("Orrery's login needs greetd. The switch happens at the next boot and can be undone here.")
+             : I18n.tr("Orrery's login needs greetd: install it first.")
+        Btn {
+            visible: !dmTile.onGreetd && page.login.greetdInstalled
+            text: I18n.tr("Switch to greetd")
+            kind: "filled"
+            enabled: !Backend.busy
+            onClicked: Ui.pick(I18n.tr("Switch to greetd at the next boot?"), [
+                { value: true, label: I18n.tr("Switch at the next boot"), sub: I18n.tr("%1 keeps working until then").replace("%1", page.login.dm || "—") },
+                { value: false, label: I18n.tr("Cancel") }], false, v => {
+                    if (v) Backend.helper(["dm-greetd"], I18n.tr("greetd will start at the next boot"));
+                })
+        }
+        Btn {
+            visible: !page.login.greetdInstalled
+            icon: "content_copy"
+            text: I18n.tr("Copy command")
+            onClicked: { Quickshell.clipboardText = "paru -S greetd cage quickshell-greetd"; Backend.say(I18n.tr("Command copied: paste it in a terminal"), false); }
+        }
+        Btn {
+            visible: dmTile.onGreetd && !!page.login.previousDm
+            text: I18n.tr("Back to %1").replace("%1", page.login.previousDm)
+            enabled: !Backend.busy
+            onClicked: Backend.helper(["dm-restore"], I18n.tr("%1 will start at the next boot").replace("%1", page.login.previousDm))
+        }
+    }
     Tile {
         last: true
         icon: page.packages ? "package_2" : "deployed_code_alert"

@@ -13,7 +13,7 @@ s = s.replace("ShellRoot {", '''ShellRoot {
     Timer {
         property int n: 0
         property var steps: [
-            ["none", () => {}], ["cascade", () => Ui.go(3)], ["pill", () => Ui.go(6)], ["back", () => Ui.go(4)],
+            ["none", () => {}], ["cascade", () => Ui.go(4)], ["pill", () => Ui.go(7)], ["back", () => Ui.go(5)],
             ["area", () => Ui.area = 3], ["add", () => { Ui.markAdded("space-1"); Backend.mutate(c => c.areas[3].spaces.push({ id: "zz", apps: [] })); }],
             ["toggle", () => Backend.mutate(c => c.areas[3].enabled = true)], ["picker", () => Ui.pick("Pick", Backend.st.apps.map(a => ({ value: a.id, label: a.name, sub: a.command })), "", v => {})],
             ["close", () => Ui.picker.close()], ["error", () => Backend.say("Music: SUPER + M is already used", true)]]

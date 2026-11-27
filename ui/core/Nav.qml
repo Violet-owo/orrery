@@ -126,7 +126,7 @@ Singleton {
 
     // A rebuilt list destroys the focused row: land on whatever took its place
     function recover(): void {
-        if (Ui.picker?.open)
+        if (Ui.picker?.open || Ui.gifPicker?.open || Ui.shortcuts?.open)
             return; // the list owns the focus
         if (keys && lastInBody && !(current && current.navigable === true))
             focus(nearest(body, lastRect));

@@ -87,6 +87,7 @@ Item {
             }
         }
     }
+    Scroller { target: flick; anchors.topMargin: 6; anchors.bottomMargin: 6 }
 
     // Scroll indicator
     Rectangle {

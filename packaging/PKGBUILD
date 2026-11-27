@@ -1,17 +1,17 @@
 # Maintainer: Violet Miller
 pkgname=orrery-caelestia
-pkgver=0.1.1
+pkgver=0.2.0beta4
 pkgrel=1
-pkgdesc="Extra settings for the Caelestia desktop: areas, keyboard, default apps, wallpapers, login (unofficial)"
+pkgdesc="Extra settings for the Caelestia desktop: areas, keyboard, default apps, wallpapers, bar, power, login (unofficial)"
 arch=('any')
 url="https://github.com/Violet-owo/orrery"
 license=('GPL-3.0-only')
-depends=('caelestia-shell' 'quickshell-git' 'hyprland' 'python' 'polkit' 'xdg-utils' 'xdg-user-dirs'
+depends=('caelestia-shell' 'quickshell-git' 'hyprland' 'python' 'python-pillow' 'polkit' 'xdg-utils' 'xdg-user-dirs'
          'ttf-material-symbols-variable')
 optdepends=('greetd: login screen' 'cage: login screen' 'quickshell-greetd: login screen')
 checkdepends=('lua')
 source=("$url/releases/download/v$pkgver/orrery-$pkgver.tar.gz")
-sha256sums=('e1d0c1730ed799961c62fbd3edaf8bb1ab0bdaeb941409bf5344e255872d2cee')
+sha256sums=('411b933cadf1c55232b60a95fbcff05139bd71c2b40d7ddbc17ad93ebee62cb8')
 
 check() {
   cd "orrery-$pkgver"

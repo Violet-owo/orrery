@@ -7,6 +7,8 @@ Rectangle {
     property string placeholder
     property bool mono
     signal commit(string value)
+    readonly property alias text: input.text
+    function focusInput(): void { input.forceActiveFocus(); }
 
     implicitWidth: 260
     implicitHeight: 40

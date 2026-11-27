@@ -21,7 +21,7 @@ s = s.replace("            Help { id: help }", '''            TestCase {
                     wait(700);
                     key(Qt.Key_Down); check("first arrow goes to the menu", Nav.inside(Nav.current, side));
                     key(Qt.Key_Down); check("down changes page", Ui.page >= 1);
-                    key(Qt.Key_4, Qt.ControlModifier); check("ctrl+4 opens keyboard", Ui.page === 3); wait(900);
+                    key(Qt.Key_5, Qt.ControlModifier); check("ctrl+5 opens keyboard", Ui.page === 4); wait(900);
                     key(Qt.Key_Right); check("right enters the page", label() === I18n.tr("Manage the keyboard with Orrery"));
                     key(Qt.Key_Space); check("space toggles", Backend.cfg.keyboard.managed === true);
                     key(Qt.Key_Z, Qt.ControlModifier); check("ctrl+z", Backend.cfg.keyboard.managed === false);
@@ -38,7 +38,7 @@ s = s.replace("            Help { id: help }", '''            TestCase {
                     key(Qt.Key_A, Qt.ControlModifier); key(Qt.Key_K); key(Qt.Key_Return);
                     check("typing a shortcut: " + Backend.cfg.keyboard.switchKey, Backend.cfg.keyboard.switchKey.endsWith("+ K"));
                     key(Qt.Key_Escape); check("esc goes back to the menu", Nav.inside(Nav.current, side));
-                    key(Qt.Key_5, Qt.ControlModifier); wait(900); check("ctrl+5 opens areas", Ui.page === 4);
+                    key(Qt.Key_6, Qt.ControlModifier); wait(900); check("ctrl+6 opens areas", Ui.page === 5);
                     key(Qt.Key_Right, Qt.AltModifier); check("alt+right changes area", Ui.area === 1);
                     n = 0; key(Qt.Key_Right); while (label() !== I18n.tr("Add an app") && n++ < 20) key(Qt.Key_Down);
                     const apps = Backend.cfg.areas[1].spaces[0].apps.length;
@@ -50,19 +50,50 @@ s = s.replace("            Help { id: help }", '''            TestCase {
                     if (!Nav.current?.onDelete) { n = 0; while (!(Nav.current?.onDelete) && n++ < 8) key(Qt.Key_Up); }
                     key(Qt.Key_Delete); wait(600); check("delete removes it", Backend.cfg.areas[1].spaces[0].apps.length === apps);
                     console.log("INPUT info open", picker.open, help.open); key(Qt.Key_F, Qt.ControlModifier); check("ctrl+f focuses search", Nav.current === search.input);
-                    for (const c of I18n.tr("Num Lock at startup").slice(0, 5)) keyClick(c);
+                    for (const c of I18n.tr("Num Lock at startup").slice(0, 8)) keyClick(c);
                     wait(300); check("search finds", search.hits.length > 0); key(Qt.Key_Return); wait(1500);
-                    check("enter lands on the result", Ui.page === 3 && label() === I18n.tr("Num Lock at startup"));
+                    check("enter lands on the result", Ui.page === 4 && label() === I18n.tr("Num Lock at startup"));
                     key(Qt.Key_F1); check("f1 opens the guide", help.open); key(Qt.Key_Escape); check("esc closes it", !help.open);
                     key(Qt.Key_S, Qt.ControlModifier); wait(2500); check("ctrl+s applies: " + Backend.message, !Backend.dirty && Backend.st.saved);
                     // mouse
-                    Ui.go(3); wait(900); const tile = stack.currentItem.findTile(I18n.tr("Num Lock at startup"), null), was = Backend.cfg.keyboard.numlock;
+                    Ui.go(4); wait(900); const tile = stack.currentItem.findTile(I18n.tr("Num Lock at startup"), null), was = Backend.cfg.keyboard.numlock;
                     stack.currentItem.reveal(tile); wait(900); mouseClick(tile, 60, 20); wait(300); check("click toggles", Backend.cfg.keyboard.numlock !== was);
                     check("no ring with the mouse", !Nav.keys);
                     const close = windowButtons.children[1]; mouseClick(close, 20, 20); wait(600); check("X asks when there are changes", picker.open);
                     key(Qt.Key_Escape); wait(500); check("esc keeps editing", !picker.open);
                     key(Qt.Key_Z, Qt.ControlModifier); wait(200); check("nothing left to save", !Backend.dirty);
-                    for (let i = 0; i < Ui.nav.length; i++) { Ui.go(i); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("page " + i + " reachable by keyboard", i === 7 || Nav.current?.navigable === true && !Nav.inside(Nav.current, side)); }
+                    Ui.go(8); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("power: first option", label() === I18n.tr("Lock"));
+                    key(Qt.Key_Return); wait(400); key(Qt.Key_Down); key(Qt.Key_Return); wait(600); check("power: picking a time: " + Backend.cfg.power.lock, Backend.cfg.power.lock === 300);
+                    stack.currentItem.setBattery(3600); check("power: charging follows battery", Backend.cfg.power.ac === 3600);
+                    stack.currentItem.setAc(600); check("power: battery follows charging", Backend.cfg.power.battery === 600);
+                    stack.currentItem.setAc(0); check("power: never while charging", Backend.cfg.power.battery === 600 && Backend.cfg.power.ac === 0);
+                    stack.currentItem.addWarning(); check("power: add a battery warning", Backend.cfg.shell.battery.warnLevels.length === 4 && Backend.cfg.shell.battery.warnLevels[3].level === 15);
+                    Backend.discard(); wait(200); check("power: discard", !Backend.dirty);
+                    key(Qt.Key_3, Qt.ControlModifier); wait(1100); check("ctrl+3 opens the bar", Ui.page === 2);
+                    stack.currentItem.move(0, 1); check("bar: move a block", Backend.cfg.shell.bar.entries[1].id === "logo");
+                    stack.currentItem.setShown("X-1", false); check("bar: hide on a screen", Backend.cfg.shell.bar.excludedScreens.includes("X-1"));
+                    Backend.discard(); wait(200); check("bar: discard", !Backend.dirty);
+                    key(Qt.Key_0, Qt.ControlModifier); check("ctrl+0 opens health", Ui.page === 9);
+                    // Dragging a scroll bar inside a list: only the bar moves the list, no touch-like swipe on top
+                    Ui.gifPicker.show("Test", p => {}); wait(2500);
+                    const g = Ui.gifPicker.grid; let sc = null;
+                    for (const c of g.children) if (c.ratio !== undefined) sc = c;
+                    if (sc && sc.needed) {
+                        const h = sc.height, y0 = g.contentY;
+                        // Small steps, like a hand: that is when a list starts to take a drag for itself
+                        mousePress(sc, 7, 10);
+                        let back = false, last = g.contentY;
+                        for (let y = 12; y <= h / 2; y += 4) { mouseMove(sc, 7, y, 8); if (g.contentY < last - 1) back = true; last = g.contentY; }
+                        const mid = g.contentY;
+                        check("scroll bar: list does not take the drag", !g.interactive && !back);
+                        for (let y = h / 2; y <= h - 2; y += 4) { mouseMove(sc, 7, y, 8); if (g.contentY < last - 1) back = true; last = g.contentY; }
+                        wait(150); const end = g.contentY; mouseRelease(sc, 7, h - 2); wait(200);
+                        check("scroll bar: the list never jumps back", !back);
+                        check("scroll bar drags the list down: " + y0 + " " + mid + " " + end, mid > y0 && end > mid && Math.abs(end - (g.contentHeight - g.height + g.originY)) < 40);
+                        check("scroll bar: list is interactive again", g.interactive);
+                    } else console.log("INPUT info no scroll bar needed in the picker");
+                    Ui.gifPicker.close(); wait(800);
+                    for (let i = 0; i < Ui.nav.length; i++) { Ui.go(i); wait(1100); key(Qt.Key_Escape); key(Qt.Key_Right); check("page " + i + " reachable by keyboard", i === 9 || Nav.current?.navigable === true && !Nav.inside(Nav.current, side)); }
                     console.log("INPUT DONE failures=" + bad);
                     last.start(); // outside the nested test event loop
                 }

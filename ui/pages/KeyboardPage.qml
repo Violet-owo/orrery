@@ -38,6 +38,18 @@ Page {
         onToggled: v => Backend.mutate(c => c.keyboard.managed = v)
     }
 
+    Tile {
+        Layout.topMargin: 8
+        first: true
+        last: true
+        icon: "keyboard_command_key"
+        label: I18n.tr("Desktop shortcuts")
+        sub: I18n.tr("Every key of Caelestia, Orrery and yours, with search. Also with Ctrl+K.")
+        clickable: true
+        onClicked: Ui.shortcuts.show()
+        Ico { text: "chevron_right"; size: 22; color: Theme.fgVariant }
+    }
+
     Head { text: I18n.tr("Layouts") }
     Repeater {
         id: rep

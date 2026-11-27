@@ -6,7 +6,7 @@
 
 **The settings Caelestia doesn't have yet.**
 
-Areas, keyboard, default apps, wallpapers and login for the [Caelestia](https://github.com/caelestia-dots) desktop on Hyprland,
+Areas, keyboard, default apps, wallpapers, power and login for the [Caelestia](https://github.com/caelestia-dots) desktop on Hyprland,
 in an app that looks and moves like the shell itself.
 
 By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
@@ -17,8 +17,6 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 
 <img src="docs/gif-search.jpg" width="49%" alt="Searching GIPHY stickers without background"> <img src="docs/areas.jpg" width="49%" alt="Areas: hidden workspaces with their apps">
 <img src="docs/lock.jpg" width="49%" alt="Caelestia's lock screen as the login screen"> <img src="docs/power.jpg" width="49%" alt="Power and low battery warnings">
-
-<sub>Pictures from the <a href="#channels">beta channel</a>: GIFs, the Bar page and the low battery warnings are in the beta for now.</sub>
 
 </div>
 
@@ -32,12 +30,15 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 |---|---|
 | **Areas** | Every hidden workspace (`Super+S`, `D`, `M`, `R`, `Ctrl+Shift+Esc`, and your own): shortcut, apps, several workspaces per area, arrow navigation, side by side, animations. Areas you leave off keep Caelestia's behaviour. |
 | **Keyboard** | Up to four layouts with variants, a shortcut to switch, Num Lock at startup, key repeat. |
-| **Default apps** | Browser, terminal, editor, files, media, mail. Links, files *and* Caelestia's own shortcuts. |
-| **Wallpapers** | Creates the folder, points Caelestia at it and makes it show up **without a restart**. Two wallpapers included, light and dark. |
+| **Default apps** | Browser, terminal, editor, files, media, mail. Links, files *and* Caelestia's own shortcuts. Spotify with spicetify in Caelestia's colours. |
+| **Wallpapers** | Creates the folder, points Caelestia at it and makes it show up **without a restart**. Two wallpapers included, light and dark. GIFs for media and the shut down menu, from your files or GIPHY (with your own free key), always without background. Desktop clock and audio bars. |
 | **Startup** | Keyboard backlight at boot. |
-| **Login** | Caelestia's lock screen as your greetd login, following your colours and wallpaper. *Experimental.* |
-| **Appearance** | Follows Caelestia's palette live, plus transparency, motion, rounding and language. |
-| **Health** | Checks for the usual breakages, undo, and an off switch. |
+| **Login** | Caelestia's lock screen as your greetd login, following your colours and wallpaper; switches from SDDM and back. *Experimental.* |
+| **Appearance** | Follows Caelestia's palette live, plus transparency, motion, rounding and language. Which apps take Caelestia's colours, and the icon theme. |
+| **Bar** | Order of the bar's blocks, which screens show it, and the volume and brightness indicators. Weather, notifications and the shut down menu. |
+| **Power** | When to lock, turn the screen off and suspend, on battery and while charging; low battery warnings. |
+| **Health** | Checks for the usual breakages (spicetify removed, Quickshell to rebuild after Qt), undo, and an off switch. |
+| **Shortcuts** | Every desktop key in one searchable list, with the ones used twice (`Ctrl+K`). |
 
 English and Italian. Fully usable without a mouse.
 
@@ -76,7 +77,7 @@ git clone https://github.com/Violet-owo/orrery && orrery/bin/orrery
 
 | Dependency | For |
 |---|---|
-| `caelestia-shell`, `quickshell-git`, `hyprland`, `python`, `polkit`, `xdg-utils`, `xdg-user-dirs` | everything |
+| `caelestia-shell`, `quickshell-git`, `hyprland`, `python`, `python-pillow`, `polkit`, `xdg-utils`, `xdg-user-dirs` | everything |
 | `greetd`, `cage`, `quickshell-greetd` | login (optional) |
 
 > [!WARNING]
@@ -87,11 +88,12 @@ git clone https://github.com/Violet-owo/orrery && orrery/bin/orrery
 | Keys | |
 |---|---|
 | Arrows, `Enter`, `Space`, `Esc` | move, activate, go back |
-| `Ctrl+1…8`, `Ctrl+Tab` | pages |
+| `Ctrl+1…9`, `Ctrl+0`, `Ctrl+Tab` | pages |
 | `Ctrl+F` or `/` | search settings |
 | `Alt+←/→` | previous / next area |
 | `Ctrl+S`, `Ctrl+Z`, `Ctrl+Shift+Z` | apply, undo, redo |
 | `Delete` | remove the selected app or layout |
+| `Ctrl+K` | desktop shortcuts |
 | `F1`, `Ctrl+Q` | guide, close |
 
 Inside an area: `Super+←/→` changes workspace, `Super+Shift+←/→` brings the window along (and puts two apps side by side).
@@ -100,6 +102,7 @@ Inside an area: `Super+←/→` changes workspace, `Super+Shift+←/→` brings 
 
 - **Nothing changes until you press Apply.** Only *Appearance* and *Wallpapers* act at once, and *Startup* and *Login* after your password.
 - It writes its own files in `~/.config/caelestia/orrery/` and one marked block in `hypr-user.lua`. It never edits Caelestia's dotfiles.
+  *Wallpapers*, *Bar* and *Power* change only their own keys in Caelestia's `shell.json`, *Appearance* only its own in `cli.json`.
 - Every apply is backed up. If Hyprland reports new errors, the previous files come back by themselves.
 - System changes go through a small `pkexec` helper with four fixed, validated actions. The app never runs as root.
 - The login falls back to the previous greeter if it fails. If the screen ever stays black: `Ctrl+Alt+F3`, log in, then
@@ -132,7 +135,7 @@ Translations live in `ui/i18n/`: English strings are the keys.
 
 ## Italiano
 
-Orrery aggiunge a Caelestia le impostazioni che mancano: aree (`Super+S/D/M`…), tastiera, app predefinite, sfondi, retroilluminazione e login,
+Orrery aggiunge a Caelestia le impostazioni che mancano: aree (`Super+S/D/M`…), tastiera, app predefinite, sfondi, barra, energia e batteria, retroilluminazione e login, i colori di Caelestia nelle altre app (anche Spotify) e l'elenco delle scorciatoie,
 con lo stesso stile e le stesse animazioni della shell. È in italiano e in inglese, e si usa anche solo da tastiera (`F1` per la guida).
 Le modifiche a Hyprland partono solo con **Applica**, e si possono annullare da **Stato**.
 

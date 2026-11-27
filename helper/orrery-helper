@@ -5,6 +5,8 @@
   login-enable USER LAYOUT VARIANT SCALE DIGITS    VARIANT may be "-"
   login-disable
   login-sync
+  dm-greetd                                        switch the login manager to greetd (next boot)
+  dm-restore                                       switch back to the previous one
 """
 import os, pwd, re, shlex, shutil, subprocess, sys
 from pathlib import Path
@@ -16,6 +18,9 @@ UNITS = ROOT / "etc/systemd/system"
 GREETD, ENV = ROOT / "etc/greetd/config.toml", ROOT / "etc/orrery/login.env"
 SAVED = ROOT / "etc/orrery/greetd-config.toml.before-orrery"
 SESSION = "/usr/lib/orrery/orrery-greeter-session"
+DM_LINK = ROOT / "etc/systemd/system/display-manager.service"
+DM_SAVED = ROOT / "etc/orrery/display-manager.before-orrery"
+UNIT_RE = re.compile(r"[a-z0-9][a-z0-9@._-]{0,60}\.service")
 COMMAND = re.compile(r'^(\s*command\s*=\s*)"([^"\\]*)"\s*$', re.M)
 
 
@@ -152,8 +157,52 @@ def login_sync():
     sh(str(LIB / "orrery-greeter-build"), m[1])
 
 
+def current_dm():
+    """The login manager systemd starts: what display-manager.service points to."""
+    try:
+        name = Path(os.readlink(DM_LINK)).name
+    except OSError:
+        return ""
+    return name if UNIT_RE.fullmatch(name) else ""
+
+
+def dm_greetd():
+    """Takes effect at the next boot: the running login manager is not stopped, it holds this session."""
+    if not (ROOT / "usr/bin/greetd").exists():
+        die("greetd is not installed")
+    old = current_dm()
+    if old == "greetd.service":
+        return
+    if not GREETD.exists():
+        # A plain text login until Orrery's is turned on, so the computer can always be used
+        uwsm = (ROOT / "usr/bin/uwsm").exists() and (ROOT / "usr/share/wayland-sessions/hyprland-uwsm.desktop").exists()
+        cmd = "agreety --cmd 'uwsm start hyprland-uwsm.desktop'" if uwsm else "agreety --cmd Hyprland"
+        put(GREETD, f'[terminal]\nvt = 1\n\n[default_session]\ncommand = "{cmd}"\nuser = "greeter"\n')
+    if old and not DM_SAVED.exists():
+        put(DM_SAVED, old + "\n")
+    if old:
+        sh("systemctl", "disable", old)
+    sh("systemctl", "enable", "greetd.service")
+    if FAKE:    # what systemctl would do
+        DM_LINK.unlink(missing_ok=True)
+        DM_LINK.symlink_to("/usr/lib/systemd/system/greetd.service")
+
+
+def dm_restore():
+    old = DM_SAVED.read_text().strip() if DM_SAVED.exists() else die("nothing to restore")
+    if not UNIT_RE.fullmatch(old) or not (ROOT / "usr/lib/systemd/system" / old).exists():
+        die("the previous login manager is not installed any more")
+    sh("systemctl", "disable", "greetd.service")
+    sh("systemctl", "enable", old)
+    DM_SAVED.unlink()
+    if FAKE:
+        DM_LINK.unlink(missing_ok=True)
+        DM_LINK.symlink_to(f"/usr/lib/systemd/system/{old}")
+
+
 ACTIONS = {"backlight": (backlight, 1), "login-enable": (login_enable, 5),
-           "login-disable": (login_disable, 0), "login-sync": (login_sync, 0)}
+           "login-disable": (login_disable, 0), "login-sync": (login_sync, 0),
+           "dm-greetd": (dm_greetd, 0), "dm-restore": (dm_restore, 0)}
 
 if __name__ == "__main__":
     fn, n = ACTIONS.get(sys.argv[1] if len(sys.argv) > 1 else "", (None, 0))
