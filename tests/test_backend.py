@@ -468,6 +468,56 @@ class T(unittest.TestCase):
             self.assertFalse(self.ctl("prefs", bad).get("ok", True))
         self.assertEqual((self.t / "caelestia/hypr-user.lua").read_text(), BASE_USER)
 
+    def test_updates(self):
+        sha = "ab" * 32
+        def rel(v, pre, pkg=True):
+            a = [{"name": f"orrery-{v}.tar.gz", "digest": "sha256:" + sha}]
+            if pkg:
+                a.append({"name": f"orrery-caelestia-{v}-1-any.pkg.tar.zst", "digest": "sha256:" + sha})
+            return {"tag_name": "v" + v, "prerelease": pre, "draft": False, "html_url": f"https://github.com/Violet-owo/orrery/releases/tag/v{v}", "assets": a}
+        rels = [rel("0.2.1beta2", True), rel("0.2.1beta1", True), rel("0.2.0", False), rel("0.2.0beta4", True),
+                {"tag_name": "v9.9.9", "draft": True}, {"tag_name": "pacman-beta", "prerelease": True}, rel("0.1.1", False, False)]
+        f = self.t / "releases.json"
+        f.write_text(json.dumps(rels))
+        self.env.update(ORRERY_RELEASES=str(f), ORRERY_MODE="pacman", XDG_CACHE_HOME=str(self.t / "cache"))
+        cur = self.ctl("updates", {"auto": True})["current"]
+        self.assertRegex(cur, r"^[0-9]+\.[0-9]+\.[0-9]+")
+        self.assertTrue(self.ctl("prefs", {"channel": "beta"})["ok"])
+        r = self.ctl("updates", {"force": True})
+        self.assertEqual((r["channel"], r["latest"]["version"], r["latest"]["package"]["file"]),
+                         ("beta", "0.2.1beta2", "orrery-caelestia-0.2.1beta2-1-any.pkg.tar.zst"))
+        self.assertTrue(r["latest"]["beta"])
+        self.ctl("prefs", {"channel": "stable"})
+        r = self.ctl("updates", {"auto": True})     # another channel: the cache is not used
+        self.assertEqual(r["latest"]["version"], "0.2.0")
+        self.assertFalse(r["latest"]["beta"])
+        # the cache answers within a day, even when GitHub would say something else
+        f.write_text(json.dumps([rel("0.3.0", False)]))
+        self.assertEqual(self.ctl("updates", {"auto": True})["latest"]["version"], "0.2.0")
+        self.assertEqual(self.ctl("updates", {"force": True})["latest"]["version"], "0.3.0")
+        # versions against the one that runs, and what can be installed
+        for latest, state in (("0.0.1", "older"), ("99.0.0", "newer"), (cur, "same")):
+            f.write_text(json.dumps([rel(latest, False)]))
+            r = self.ctl("updates", {"force": True})
+            self.assertEqual(r["state"], state, latest)
+            self.assertEqual(r["canInstall"], state != "same")
+        f.write_text(json.dumps([rel("99.0.0", False, False)]))
+        r = self.ctl("updates", {"force": True})
+        self.assertFalse(r["canInstall"])
+        self.assertIn("releases/download/v99.0.0/PKGBUILD", r["command"])
+        self.env["ORRERY_MODE"] = "source"
+        r = self.ctl("updates", {"force": True})
+        self.assertFalse(r["canInstall"])
+        self.assertIn("switch main", r["command"])
+        f.write_text(json.dumps([rel("0.2.1beta1", True)]))
+        self.assertEqual(self.ctl("updates", {"force": True})["state"], "none")
+        # off: no check at start, still on request
+        self.ctl("prefs", {"autoUpdate": False})
+        self.assertFalse(self.ctl("updates", {"auto": True})["checked"])
+        self.assertTrue(self.ctl("updates", {"force": True})["checked"])
+        self.assertFalse(self.ctl("prefs", {"channel": "nightly"}).get("ok", True))
+        self.assertEqual((self.t / "caelestia/hypr-user.lua").read_text(), BASE_USER)
+
     def test_first_run_presets_apply(self):
         st = self.ctl("state")
         keys = [a["key"] for a in st["config"]["areas"]]

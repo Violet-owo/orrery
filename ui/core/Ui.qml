@@ -16,7 +16,7 @@ Singleton {
         { icon: "power_settings_new", name: "Startup", sub: "Keyboard light", group: 2 },
         { icon: "login", name: "Login", sub: "Lock screen at boot", group: 2 },
         { icon: "bedtime", name: "Power", sub: "Lock, screen off, suspend", group: 2 },
-        { icon: "health_and_safety", name: "Health", sub: "Checks, undo, credits", group: 3 }]
+        { icon: "health_and_safety", name: "Health", sub: "Checks, updates, credits", group: 3 }]
 
     // What the search knows: [page, English label]
     readonly property var index: [
@@ -28,7 +28,7 @@ Singleton {
         [5, "Customise this area"], [5, "Shortcut"], [5, "Add an app"], [5, "Move between workspaces with the arrows"], [5, "Wrap around"], [5, "Bring apps back"], [5, "Opening"], [5, "Changing workspace"],
         [6, "Turn on at startup"], [6, "Level"], [7, "Required packages"], [7, "Switch to greetd"], [7, "Scale"], [7, "Numeric keypad always types digits"],
         [8, "Lock"], [8, "Turn the screen off"], [8, "Suspend"], [8, "Suspend on battery"], [8, "Suspend while charging"], [8, "Lock before suspending"], [8, "Stay awake while something plays"], [8, "Stay awake while charging"], [8, "Hibernate after a while asleep"], [8, "Caelestia's defaults"], [8, "Low battery"], [8, "Add a warning"], [8, "Hibernate when the battery is almost empty"],
-        [9, "Developed by"], [9, "Source code"], [9, "Undo the last apply"], [9, "Turn Orrery off"]]
+        [9, "Developed by"], [9, "Source code"], [9, "Undo the last apply"], [9, "Turn Orrery off"], [9, "Updates"], [9, "Channel"], [9, "Check for updates at start"]]
     property string target: "" // label to highlight after a search
 
     property int page: parseInt(Quickshell.env("ORRERY_PAGE") || "0")

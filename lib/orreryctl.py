@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
 """Orrery backend: reads and writes the user's settings. Never runs as root."""
-import configparser, copy, datetime, json, os, re, shutil, subprocess, sys
+import configparser, copy, datetime, json, os, re, shlex, shutil, subprocess, sys, time
 from pathlib import Path
 
 HOME = Path.home()
@@ -923,7 +923,7 @@ def giphy_key():
         return ""
 
 
-def fetch(url, limit=MAX_PIC):
+def fetch(url, limit=MAX_PIC, who="GIPHY"):
     import urllib.error, urllib.request
     if DRY and os.environ.get("ORRERY_NET") != "1":
         raise Bad("no network in test mode")
@@ -932,13 +932,15 @@ def fetch(url, limit=MAX_PIC):
         with urllib.request.urlopen(req, timeout=15) as r:
             data = r.read(limit + 1)
     except urllib.error.HTTPError as e:
+        if who == "GitHub" and e.code in (403, 429):
+            raise Bad("GitHub: too many checks this hour, try again later")
         if e.code in (401, 403):
             raise Bad("GIPHY did not accept the key")
         if e.code == 429:
             raise Bad("GIPHY: too many searches this hour with this key, try again later")
-        raise Bad(f"GIPHY answered {e.code}")
+        raise Bad(f"{who} answered {e.code}")
     except (urllib.error.URLError, OSError) as e:
-        raise Bad("GIPHY cannot be reached: check the connection")
+        raise Bad(f"{who} cannot be reached: check the connection")
     if len(data) > limit:
         raise Bad("the file is too big")
     return data
@@ -1348,22 +1350,30 @@ def disable():
     return {"ok": True}
 
 
-PREFS = {"language": "auto", "follow": True, "transparent": True, "base": 0.85, "layers": 0.4, "speed": 1.0, "rounding": 1.0}
+PREFS = {"language": "auto", "follow": True, "transparent": True, "base": 0.85, "layers": 0.4, "speed": 1.0, "rounding": 1.0,
+         "channel": "auto", "autoUpdate": True}
+
+
+def read_prefs():
+    out = dict(PREFS)
+    try:
+        old = json.loads((OWN / "ui.json").read_text())
+        out.update({k: old[k] for k in PREFS if k in old})
+    except (OSError, ValueError, TypeError):
+        pass
+    return out
 
 
 def prefs(new):
-    """Look of the app itself: saved at once, never touches Hyprland."""
-    out = dict(PREFS)
+    """The app itself: saved at once, never touches Hyprland."""
+    out = read_prefs()
     path = OWN / "ui.json"
-    try:
-        old = json.loads(path.read_text())
-        out.update({k: old[k] for k in PREFS if k in old})
-    except (OSError, ValueError):
-        pass
     out.update({k: v for k, v in new.items() if k in PREFS})
     if out["language"] not in ("auto", "en", "it"):
         raise Bad("language: unknown")
-    for k in ("follow", "transparent"):
+    if out["channel"] not in ("auto", "stable", "beta"):
+        raise Bad("channel: unknown")
+    for k in ("follow", "transparent", "autoUpdate"):
         out[k] = bool(out[k])
     for k, lo, hi in (("base", 0.1, 1), ("layers", 0.05, 1), ("speed", 0.05, 4), ("rounding", 0, 2)):
         out[k] = round(float(number(out[k], lo, hi, k)), 3)
@@ -1753,8 +1763,121 @@ def state():
             "login": {"greetd": os.path.exists("/etc/greetd/config.toml"), "command": greeter, "dm": display_manager(),
                       "greetdInstalled": shutil.which("greetd") is not None or os.path.exists("/usr/bin/greetd"),
                       "previousDm": previous_dm(),
-                      "packages": {p: shutil.which(b) is not None for p, b in
-                                   (("cage", "cage"), ("quickshell-greetd", "quickshell-greetd-launcher"))}}}}
+                      # the login screen is shared by every user: it is built from the packaged Caelestia only,
+                      # never from a copy in someone's home
+                      "packages": {**{p: shutil.which(b) is not None for p, b in
+                                      (("cage", "cage"), ("quickshell-greetd", "quickshell-greetd-launcher"))},
+                                   "caelestia-shell": os.path.isfile("/etc/xdg/quickshell/caelestia/modules/lock/LockSurface.qml")}}}}
+
+
+# --- updates -------------------------------------------------------------------------
+REPO = "Violet-owo/orrery"
+RELEASES = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
+UPDATE_CACHE = THUMBS.parent / "update.json"
+VER_RE = re.compile(r"([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,4})(?:beta([0-9]{1,4}))?")
+PKG_RE = re.compile(r"orrery-caelestia-(.+)-([0-9]{1,3})-any\.pkg\.tar\.zst")
+DAY = 86400
+
+
+def ver_key(v):
+    """Sorts like pacman: 0.2.0beta1 < 0.2.0beta2 < 0.2.0 < 0.2.1beta1"""
+    m = VER_RE.fullmatch(v or "")
+    return (int(m[1]), int(m[2]), int(m[3]), 0 if m[4] else 1, int(m[4] or 0)) if m else None
+
+
+def own_version():
+    try:
+        m = re.search(r'property string version: "([^"]+)"', (SHARE / "ui/core/Ui.qml").read_text())
+    except OSError:
+        m = None
+    return m[1] if m else ""
+
+
+def install_mode():
+    """pacman: the package in /usr/share/orrery; source: a git checkout run in place"""
+    if DRY and os.environ.get("ORRERY_MODE"):
+        return os.environ["ORRERY_MODE"]
+    if SHARE != Path("/usr/share/orrery"):
+        return "source"
+    return "pacman" if run("pacman", "-Qq", "orrery-caelestia").returncode == 0 else "other"
+
+
+def beta_repo():
+    """The [orrery-beta] pacman repository: pacman -Syu installs betas from it whatever the channel"""
+    try:
+        return re.search(r"^\s*\[orrery-beta\]", Path("/etc/pacman.conf").read_text(), re.M) is not None
+    except OSError:
+        return False
+
+
+def releases():
+    if DRY and os.environ.get("ORRERY_RELEASES"):
+        return json.loads(Path(os.environ["ORRERY_RELEASES"]).read_text())
+    r = json.loads(fetch(RELEASES, 4 * 1024 * 1024, "GitHub"))
+    if not isinstance(r, list):
+        raise Bad("GitHub: unexpected answer")
+    return r
+
+
+def newest(rels, channel):
+    """The highest release of the channel: beta also takes a stable release when it is the newest"""
+    best = None
+    for r in rels:
+        if not isinstance(r, dict) or r.get("draft"):
+            continue
+        tag = str(r.get("tag_name") or "")
+        v = tag[1:] if tag.startswith("v") else ""
+        k = ver_key(v)
+        if not k or (channel == "stable" and (r.get("prerelease") or k[3] == 0)):
+            continue
+        if best is None or k > best[0]:
+            best = (k, v, r)
+    if not best:
+        return None
+    k, v, r = best
+    pkg = None
+    for a in r.get("assets") or []:
+        if not isinstance(a, dict):
+            continue
+        m, d = PKG_RE.fullmatch(str(a.get("name") or "")), str(a.get("digest") or "")
+        if m and m[1] == v and re.fullmatch(r"sha256:[0-9a-f]{64}", d) and (pkg is None or int(m[2]) > int(pkg["rel"])):
+            pkg = {"file": m[0], "rel": m[2], "sha256": d[7:]}
+    url = str(r.get("html_url") or "")
+    return {"version": v, "beta": k[3] == 0, "date": str(r.get("published_at") or "")[:10], "package": pkg,
+            "url": url if url.startswith(f"https://github.com/{REPO}/") else f"https://github.com/{REPO}/releases"}
+
+
+def updates(opts):
+    """Checks GitHub at most once a day by itself, at once when asked"""
+    p, cur = read_prefs(), own_version()
+    channel = p["channel"] if p["channel"] in ("stable", "beta") else "beta" if "beta" in cur else "stable"
+    mode = install_mode()
+    out = {"ok": True, "current": cur, "channel": channel, "mode": mode, "auto": bool(p["autoUpdate"]),
+           "betaRepo": beta_repo(), "checked": False}
+    if opts.get("auto") and not p["autoUpdate"]:
+        return out
+    try:
+        cache = json.loads(UPDATE_CACHE.read_text())
+        fresh = cache["channel"] == channel and 0 <= time.time() - float(cache["time"]) < DAY
+    except (OSError, ValueError, KeyError, TypeError):
+        cache, fresh = {}, False
+    if opts.get("force") or not fresh:
+        cache = {"time": time.time(), "channel": channel, "latest": newest(releases(), channel)}
+        write(UPDATE_CACHE, json.dumps(cache) + "\n")
+    latest = cache.get("latest") if isinstance(cache.get("latest"), dict) else None
+    lk, ck = ver_key(latest["version"]) if latest else None, ver_key(cur)
+    state = "none" if not lk else "same" if lk == ck else "newer" if ck is None or lk > ck else "older"
+    branch = "beta" if channel == "beta" else "main"
+    if mode == "source":
+        command = f"git -C {shlex.quote(str(SHARE))} switch {branch} && git -C {shlex.quote(str(SHARE))} pull"
+    elif latest:
+        command = (f'cd "$(mktemp -d)" && curl -LO https://github.com/{REPO}/releases/download/v{latest["version"]}/PKGBUILD'
+                   " && makepkg -si")
+    else:
+        command = ""
+    return {**out, "checked": True, "time": int(cache.get("time") or 0), "latest": latest, "state": state,
+            "canInstall": mode == "pacman" and state in ("newer", "older") and bool(latest and latest["package"]),
+            "command": command}
 
 
 def check():
@@ -1791,6 +1914,7 @@ def main():
         takes["spotify"] = spotify
         takes["pic-thumbs"] = pic_thumbs
         takes["shortcuts"] = shortcuts
+        takes["updates"] = updates
         if cmd in takes:
             res = takes[cmd](json.load(sys.stdin))
         else:

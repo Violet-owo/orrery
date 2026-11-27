@@ -37,7 +37,7 @@ By [Violet Miller](https://portfolio.violetvrc30.workers.dev/)
 | **Appearance** | Follows Caelestia's palette live, plus transparency, motion, rounding and language. Which apps take Caelestia's colours, and the icon theme. |
 | **Bar** | Order of the bar's blocks, which screens show it, and the volume and brightness indicators. Weather, notifications and the shut down menu. |
 | **Power** | When to lock, turn the screen off and suspend, on battery and while charging; low battery warnings. |
-| **Health** | Checks for the usual breakages (spicetify removed, Quickshell to rebuild after Qt), undo, and an off switch. |
+| **Health** | Checks for the usual breakages (spicetify removed, Quickshell to rebuild after Qt), undo, an off switch, and **updates**: stable or beta channel, installed from the app. |
 | **Shortcuts** | Every desktop key in one searchable list, with the ones used twice (`Ctrl+K`). |
 
 English and Italian. Fully usable without a mouse.
@@ -45,6 +45,7 @@ English and Italian. Fully usable without a mouse.
 ## Install
 
 Orrery needs [Caelestia](https://github.com/caelestia-dots/caelestia) (shell and dotfiles, Lua configuration) on Hyprland 0.55 or newer.
+The shell can be the AUR package or your own copy installed from git in `~/.config/quickshell/caelestia`: the package does not require `caelestia-shell`.
 
 ```sh
 mkdir orrery && cd orrery
@@ -52,7 +53,7 @@ curl -LO https://github.com/Violet-owo/orrery/releases/latest/download/PKGBUILD
 paru -Bi .                    # or: makepkg -si
 ```
 
-Not on the AUR yet. Update by running the same commands again; remove with `sudo pacman -Rns orrery-caelestia`
+Not on the AUR yet. Update from *Health → Updates*, where you also choose between the stable and the beta channel, or by running the same commands again; remove with `sudo pacman -Rns orrery-caelestia`
 (first turn it off in *Health*, and remove what you enabled in *Startup* and *Login*).
 
 ### Channels
@@ -77,8 +78,8 @@ git clone https://github.com/Violet-owo/orrery && orrery/bin/orrery
 
 | Dependency | For |
 |---|---|
-| `caelestia-shell`, `quickshell-git`, `hyprland`, `python`, `python-pillow`, `polkit`, `xdg-utils`, `xdg-user-dirs` | everything |
-| `greetd`, `cage`, `quickshell-greetd` | login (optional) |
+| Caelestia (`caelestia-shell` or a copy from git), `quickshell-git`, `hyprland`, `python`, `python-pillow`, `polkit`, `xdg-utils`, `xdg-user-dirs` | everything |
+| `caelestia-shell` (the AUR package), `greetd`, `cage`, `quickshell-greetd` | login (optional) |
 
 > [!WARNING]
 > `noctalia-qs` claims to provide `quickshell-git` but cannot run Caelestia. If your helper picks it, install `aur/quickshell-git`.
@@ -104,7 +105,8 @@ Inside an area: `Super+←/→` changes workspace, `Super+Shift+←/→` brings 
 - It writes its own files in `~/.config/caelestia/orrery/` and one marked block in `hypr-user.lua`. It never edits Caelestia's dotfiles.
   *Wallpapers*, *Bar* and *Power* change only their own keys in Caelestia's `shell.json`, *Appearance* only its own in `cli.json`.
 - Every apply is backed up. If Hyprland reports new errors, the previous files come back by themselves.
-- System changes go through a small `pkexec` helper with four fixed, validated actions. The app never runs as root.
+- System changes go through a small `pkexec` helper with a few fixed, validated actions. The app never runs as root.
+  Updates install only Orrery's own package from its GitHub release, after checking its checksum.
 - The login falls back to the previous greeter if it fails. If the screen ever stays black: `Ctrl+Alt+F3`, log in, then
   `sudo /usr/lib/orrery/orrery-helper login-disable`.
 

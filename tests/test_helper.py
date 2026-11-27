@@ -19,8 +19,9 @@ class T(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.r)
 
-    def run_(self, *a):
-        return subprocess.run([sys.executable, "-I", str(H), *a], env={**os.environ, "ORRERY_ROOT": str(self.r)}, capture_output=True, text=True)
+    def run_(self, *a, env=None):
+        return subprocess.run([sys.executable, "-I", str(H), *a], env={**os.environ, "ORRERY_ROOT": str(self.r), **(env or {})},
+                              capture_output=True, text=True)
 
     def toml(self):
         return (self.r / "etc/greetd/config.toml").read_text()
@@ -33,6 +34,32 @@ class T(unittest.TestCase):
         self.assertIn("ORRERY_FALLBACK=/usr/bin/noctalia-greeter-session", (self.r / "etc/orrery/login.env").read_text())
         self.assertEqual(self.run_("login-disable").returncode, 0)
         self.assertEqual(self.toml(), TOML)
+
+    def test_update(self):
+        import hashlib
+        v, name = "0.2.1beta1", "orrery-caelestia-0.2.1beta1-1-any.pkg.tar.zst"
+        rel = self.r / "rel" / f"v{v}"
+        rel.mkdir(parents=True)
+        def pkg(info):
+            src = self.r / "src"
+            shutil.rmtree(src, ignore_errors=True)
+            src.mkdir()
+            (src / ".PKGINFO").write_text(info)
+            subprocess.run(["bsdtar", "--zstd", "-cf", str(rel / name), "-C", str(src), ".PKGINFO"], check=True)
+            return hashlib.sha256((rel / name).read_bytes()).hexdigest()
+        env = {"ORRERY_UPDATE_BASE": (self.r / "rel").as_uri()}
+        good = pkg(f"pkgname = orrery-caelestia\npkgver = {v}-1\narch = any\n")
+        r = self.run_("update", name, good, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("would run: pacman -U --noconfirm", r.stdout)
+        self.assertNotEqual(self.run_("update", name, "0" * 64, env=env).returncode, 0)
+        bad = pkg(f"pkgname = something-else\npkgver = {v}-1\narch = any\n")
+        r = self.run_("update", name, bad, env=env)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("would run", r.stdout)
+        for a in (("evil-1.0-1-any.pkg.tar.zst", good), ("orrery-caelestia-../x-1-any.pkg.tar.zst", good),
+                  ("orrery-caelestia-0.2.1-1-any.pkg.tar.zst", "xyz"), (name,)):
+            self.assertNotEqual(self.run_("update", *a, env=env).returncode, 0, a)
 
     def test_login_rejects(self):
         for a in ((USER, "it;x", "-", "1", "1"), (USER, "it", "$(x)", "1", "1"), (USER, "it", "-", "9", "1"),

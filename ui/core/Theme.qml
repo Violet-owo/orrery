@@ -21,7 +21,7 @@ Singleton {
     property real shellSpeed: 1
 
     // Orrery's preferences (~/.config/orrery/ui.json)
-    property var prefs: ({ language: "auto", follow: true, transparent: true, base: 0.85, layers: 0.4, speed: 1, rounding: 1 })
+    property var prefs: ({ language: "auto", follow: true, transparent: true, base: 0.85, layers: 0.4, speed: 1, rounding: 1, channel: "auto", autoUpdate: true })
     readonly property bool transparent: prefs.follow ? shellTransparent : prefs.transparent
     readonly property real baseAlpha: prefs.follow ? shellBase : prefs.base
     readonly property real layerAlpha: prefs.follow ? shellLayers : prefs.layers
@@ -94,7 +94,11 @@ Singleton {
 
     FontLoader {
         id: gsf
-        source: "file:///etc/xdg/quickshell/caelestia/assets/google-sans-flex/GoogleSansFlex-VariableFont_GRAD,ROND,opsz,slnt,wdth,wght.ttf"
+        // Caelestia from the AUR, then a copy installed from git in ~/.config/quickshell
+        readonly property string file: "assets/google-sans-flex/GoogleSansFlex-VariableFont_GRAD,ROND,opsz,slnt,wdth,wght.ttf"
+        source: `file:///etc/xdg/quickshell/caelestia/${file}`
+        onStatusChanged: if (status === FontLoader.Error && !String(source).startsWith(`file://${root.confDir}`))
+            source = `file://${root.confDir}/quickshell/caelestia/${file}`
     }
 
     FileView {

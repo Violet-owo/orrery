@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Updates, in *Health*: choose the stable or the beta channel, check for a new version (by itself at most once a day,
+  or with a button; it can be turned off) and install it with your password. Only Orrery's own package is installed,
+  downloaded from its GitHub release and checked against its checksum, with `pacman -U`: the rest of the system is not
+  touched. Going from a beta back to the stable channel installs the stable release; Orrery restarts by itself
+- Orrery no longer watches its own files while it runs
+- Works with Caelestia installed from git: the package no longer requires `caelestia-shell`, and the font is also
+  taken from `~/.config/quickshell/caelestia`. The login screen still needs the AUR package, and *Login* says so
+
 ## 0.2.0
 
 The first stable release with everything from the betas 0.1.2beta1 to 0.2.0beta4, listed below.

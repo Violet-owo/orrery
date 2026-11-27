@@ -138,7 +138,53 @@ Singleton {
         });
     }
 
-    Component.onCompleted: refresh(false)
+    // Updates: what GitHub has for the chosen channel. null until the first check
+    property var update: null
+    property bool checking: false
+    property bool updating: false
+    property string updateError: ""
+    property string notice: "" // said once the window shows
+    onNoticeChanged: if (ready && notice) say(notice, false)
+    onReadyChanged: if (ready && notice) say(notice, false)
+    function checkUpdates(force: bool): void {
+        if (checking || updating)
+            return;
+        checking = true;
+        call("updates", { force: force, auto: !force }, r => {
+            checking = false;
+            updateError = r.ok === false ? (r.error ?? "") : "";
+            if (r.ok !== false) {
+                update = r;
+                if (!force && r.state === "newer")
+                    notice = I18n.tr("Orrery %1 is available: see Health").replace("%1", r.latest.version);
+            } else if (force)
+                say(I18n.tr(r.error), true);
+        });
+    }
+    function installUpdate(): void {
+        const p = update?.latest?.package;
+        if (!p || busy || dirty)
+            return;
+        busy = true;
+        updating = true;
+        exec(["pkexec", "/usr/lib/orrery/orrery-helper", "update", p.file, p.sha256], "", (code, out, err) => {
+            updating = false;
+            busy = false;
+            if (code === 0) {
+                // The new version opens where this one was; -n lets only one Orrery run, so this one leaves first
+                Quickshell.execDetached(["sh", "-c", "sleep 1; ORRERY_PAGE=9 exec orrery"]);
+                return Qt.quit();
+            }
+            const lines = (err || out).trim().split("\n");
+            say(code === 126 || code === 127 ? I18n.tr("Authentication cancelled")
+                : I18n.tr(lines.find(l => l.startsWith("error:")) ?? lines[lines.length - 1]), true);
+        });
+    }
+
+    Component.onCompleted: {
+        refresh(false);
+        checkUpdates(false);
+    }
 
     Timer {
         id: clear

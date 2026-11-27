@@ -8,7 +8,7 @@ Page {
     id: page
     readonly property var login: Backend.st.system.login
     readonly property bool mine: login.command === "/usr/lib/orrery/orrery-greeter-session"
-    readonly property bool packages: login.packages["cage"] && login.packages["quickshell-greetd"]
+    readonly property bool packages: login.packages["cage"] && login.packages["quickshell-greetd"] && login.packages["caelestia-shell"] !== false
     readonly property var first: Backend.cfg.keyboard.layouts[0]
     property real loginScale: 1
     property bool digits: true
@@ -93,6 +93,11 @@ Page {
                 Backend.helper(["login-enable", Quickshell.env("USER"), page.first.layout, page.first.variant || "-", String(page.loginScale), page.digits ? "1" : "0"], I18n.tr("Enabled, from the next boot"));
             }
         }
+    }
+    Note {
+        visible: page.login.packages["caelestia-shell"] === false
+        icon: "info"
+        text: I18n.tr("The login screen is built from Caelestia installed from the AUR (caelestia-shell). A copy installed from git in your home cannot be used: the login screen is shared by every user of this computer.")
     }
     Note { visible: !Backend.st.system.helper; icon: "lock"; text: I18n.tr("Install the Orrery package to enable this: the system helper is missing.") }
 }

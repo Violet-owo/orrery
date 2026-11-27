@@ -8,6 +8,9 @@ import qs.controls
 import qs.pages
 
 ShellRoot {
+    // An update replaces the files while Orrery runs: it restarts by itself instead of reloading halfway
+    settings.watchFiles: false
+
     FloatingWindow {
         id: win
         title: "Orrery"
