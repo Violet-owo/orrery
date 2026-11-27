@@ -72,6 +72,18 @@ Page {
         }
     }
 
+    Head { text: "Specola" }
+    ToggleTile {
+        first: true
+        last: true
+        icon: "photo_library"
+        label: I18n.tr("Open the gallery with %1").replace("%1", Backend.cfg.gallery.key.replace("SUPER", "Super").replace(" + ", "+"))
+        sub: Backend.st.system.specola ? I18n.tr("Specola, our photo gallery. Saved with Apply.") : I18n.tr("Install Specola, our photo gallery, to use it")
+        dim: !Backend.st.system.specola
+        checked: Backend.cfg.gallery.enabled
+        onToggled: v => Backend.mutate(c => c.gallery.enabled = v)
+    }
+
     Head { text: "Spotify" }
     Tile {
         first: true

@@ -34,6 +34,11 @@ for var, command in pairs(cfg.apps or {}) do
     end
 end
 
+-- Our other apps on their own keys (Specola) ---------------------------------------
+for _, b in ipairs(cfg.binds or {}) do
+    rebind(b.key, hl.dsp.exec_cmd(b.command))
+end
+
 -- Areas ----------------------------------------------------------------------
 local areas = cfg.areas or {}
 if #areas == 0 then return M end

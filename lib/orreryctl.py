@@ -38,6 +38,8 @@ DEFAULT = {
     "keyboard": {"managed": False, "layouts": [{"layout": "us", "variant": ""}], "switchKey": "SUPER + Space",
                  "numlock": False, "repeatRate": 35, "repeatDelay": 250},
     "areas": [],
+    # our other apps: Specola, the gallery, on a key of its own when it is installed
+    "gallery": {"enabled": True, "key": "SUPER + G"},
 }
 
 def _app(name, cls, command, autostart=True):
@@ -238,6 +240,13 @@ def validate(cfg):
             raise Bad(f"{role}: {v} is not installed")
         out["apps"][role] = v
 
+    g = cfg.get("gallery") or {}
+    out["gallery"]["enabled"] = bool(g.get("enabled", True))
+    key_ = str(g.get("key") or "SUPER + G").strip().upper()
+    if not KEY_RE.match(key_):
+        raise Bad("gallery: invalid shortcut")
+    out["gallery"]["key"] = key_
+
     kb, k = cfg.get("keyboard") or {}, out["keyboard"]
     k["managed"], k["numlock"] = bool(kb.get("managed")), bool(kb.get("numlock"))
     k["layouts"] = []
@@ -335,6 +344,9 @@ def settings_lua(cfg, apps):
                            "repeat_rate": k["repeatRate"], "repeat_delay": k["repeatDelay"],
                            "switch_key": k["switchKey"] if k["switchKey"] and len(k["layouts"]) > 1 else None}
     out["apps"] = {var: apps[cfg["apps"][role]]["command"] for role, var in ROLES.items() if cfg["apps"][role]}
+    g = cfg.get("gallery") or {}
+    if g.get("enabled", True) and shutil.which("specola"):
+        out["binds"] = [{"key": g.get("key") or "SUPER + G", "command": "specola"}]
     taken = {p["class"].lower() for a in cfg["areas"] for s in a["spaces"] for p in s["apps"]}
     out["areas"] = [{
         "id": a["id"], "key": a["key"], "arrows": a["arrows"], "wrap": a["wrap"], "bring_back": a["bringBack"],
@@ -1756,6 +1768,7 @@ def state():
         "canUndo": BACKUPS.is_dir() and any(BACKUPS.iterdir()),
         "system": {
             "helper": os.path.exists(helper), "caelestia": (CONF / "hypr/hyprland.lua").exists(),
+            "specola": shutil.which("specola") is not None,
             "backlight": {"present": LED is not None,
                           "max": int((LED / "max_brightness").read_text()) if LED else 0,
                           "unit": next((u for u in ("orrery-kbd-backlight.service", "kbd-backlight-on.service")
