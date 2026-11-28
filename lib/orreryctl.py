@@ -252,6 +252,8 @@ def validate(cfg):
     k["layouts"] = []
     for l in kb.get("layouts") or []:
         lay, var = str(l.get("layout", "")), str(l.get("variant", ""))
+        if var == "[[EMPTY]]":
+            var = ""     # saved by 0.2.x from an empty kb_variant: it means none
         if not LAYOUT_RE.match(lay) or not VARIANT_RE.match(var):
             raise Bad("keyboard: invalid layout")
         k["layouts"].append({"layout": lay, "variant": var})
@@ -1670,7 +1672,8 @@ def option(name):
         d = json.loads(run("hyprctl", "getoption", name, "-j").stdout)
     except ValueError:
         return None
-    return next((d[k] for k in ("str", "int", "float", "bool") if k in d), None)
+    v = next((d[k] for k in ("str", "int", "float", "bool") if k in d), None)
+    return "" if v == "[[EMPTY]]" else v    # how hyprctl prints an empty string
 
 
 def conflicts():
@@ -1717,7 +1720,8 @@ def state():
         layouts = str(option("input:kb_layout") or "us").split(",")
         variants = str(option("input:kb_variant") or "").split(",")
         variants += [""] * len(layouts)
-        ok = [{"layout": l.strip(), "variant": v.strip()} for l, v in zip(layouts, variants) if LAYOUT_RE.match(l.strip())]
+        ok = [{"layout": l.strip(), "variant": v.strip() if VARIANT_RE.match(v.strip()) else ""}
+              for l, v in zip(layouts, variants) if LAYOUT_RE.match(l.strip())]
         cfg["keyboard"]["layouts"] = ok[:4] or cfg["keyboard"]["layouts"]
         cfg["keyboard"]["numlock"] = bool(option("input:numlock_by_default"))
         cfg["areas"] = presets(apps)

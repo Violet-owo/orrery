@@ -86,6 +86,13 @@ class T(unittest.TestCase):
         out = self.lua('io.write(require("orrery.settings").areas[1].spaces[1].apps[1].command)')
         self.assertEqual(out, nasty)
 
+    def test_empty_variant_marker(self):
+        # hyprctl prints an empty kb_variant as "[[EMPTY]]": 0.2.x took it for a variant and refused every apply
+        r = self.ctl("apply", self.cfg(keyboard={"managed": True, "switchKey": "SUPER + Space",
+                                                  "layouts": [{"layout": "br", "variant": "[[EMPTY]]"}]}))
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(r["config"]["keyboard"]["layouts"], [{"layout": "br", "variant": ""}])
+
     def test_rejects(self):
         for bad in (dict(keyboard={"managed": True, "layouts": [{"layout": "it;rm", "variant": ""}]}),
                     dict(keyboard={"managed": True, "layouts": []}), dict(apps={"browser": "nope.desktop"}),
