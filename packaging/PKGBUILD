@@ -13,7 +13,7 @@ optdepends=('caelestia-shell: Caelestia from the AUR, needed by the login screen
             'greetd: login screen' 'cage: login screen' 'quickshell-greetd: login screen')
 checkdepends=('lua')
 source=("$url/releases/download/v$pkgver/orrery-$pkgver.tar.gz")
-sha256sums=('083ad5b7da9f3c87983b495b7b041ee1eaff39c9a9fd74ddff06692a57250b22')
+sha256sums=('a6c0e8a1cfc7b5d80e8e945e7db194344cd7a55cde6456b85986f0c71e0a6dc5')
 
 check() {
   cd "orrery-$pkgver"
