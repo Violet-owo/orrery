@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1beta2
+
+- **Fixed "invalid layout" on every apply** when Hyprland had no keyboard variant set: `hyprctl` prints an empty
+  option as `[[EMPTY]]`, and the first run took it for a variant. A configuration saved with it is repaired by itself
+- *Default apps*: with Specola (a photo gallery for Caelestia, coming soon) installed, `Super + G` opens it
+  (it can be turned off or changed)
+
 ## 0.2.1beta1
 
 - Updates, in *Health*: choose the stable or the beta channel, check for a new version (by itself at most once a day,
